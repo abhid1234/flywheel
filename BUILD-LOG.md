@@ -166,3 +166,33 @@ C11 wired the CLI seam: `label` / `clusters` / `propose` / `measure`. All logic 
 1. factory-tick.sh -> emit structured test output (tap-json/JUnit) so factory labels become gold.
 2. Sync factory transcripts to feed the labeler its validation set.
 3. Then M3: A/A calibration -> statistical arm at n>=60.
+
+## 2026-07-20 — REAL package integration (131 tests). The "zero integration" thesis, proven concretely.
+
+Built loop modules (`policy`, `attest`, `state`) + completed `measure` (`suite`, `verdict`), then
+wired flywheel through the REAL `selfpatch` and `provenant` packages (not reimplementations).
+
+### The finding: integrating them took FOUR consecutive interface-mismatch fixes
+Feeding one package's output into the next surfaced four gaps in a row — exactly what "eleven
+zero-dependency packages with no code-level integration" predicts:
+1. provenant `artifact` must be `{hash}`/string/Buffer, not a descriptor object
+2. provenant `created` must be an ISO-8601-Z timestamp (a CLI-seam concern — pure modules can't stamp)
+3. provenant `parents` are prior ATTESTATION ids (64-hex), not episode references
+   -> episode ids moved to `meta.derived_from`; `parents` only takes valid attestation hashes
+4. provenant `evaluation.checks[]` are OBJECTS `{name,passed,note?}`, not strings
+
+Each was a real adapter requirement. The result is `src/loop/attest.js` = the adapter that makes
+flywheel's output provenant-valid, plus `test/attest-provenant.test.js` — a self-verifying contract
+test that imports the REAL provenant validator (131 tests, 0 skipped = provenant resolved and passed).
+
+### FULL CHAIN LIVE
+`flywheel proposes -> selfpatch.gate() approves (and BLOCKS settings.json/secrets via the flywheel
+policy) -> provenant.attest() records it with method=test, score, and derived_from = the production
+failures it came from.` Three of the eleven packages, integrated into one loop that gates and
+attests every self-edit. This is the deliverable the whole project was arguing for.
+
+### Loop/measure modules now in place for M3
+- `loop/policy.js` — selfpatch policy: secrets+settings.json protected, weights forbidden, 20-line budget
+- `loop/attest.js` — provenant adapter (above)
+- `measure/suite.js` — `clusterToTrialSuite` + deterministic sealed `splitHeldout` (salt-hashed)
+- `measure/verdict.js` — `judge()`: helped/regressed/no_effect/inconclusive/overfit; n<60 -> can't exceed inconclusive
