@@ -1,0 +1,13 @@
+{
+  "name": "@avee1234/flywheel",
+  "version": "0.0.0",
+  "description": "Agents that improve from their own production traces. Harvest, label, cluster, propose, gate, measure. Zero dependencies.",
+  "type": "module",
+  "main": "src/index.js",
+  "bin": { "flywheel": "bin/flywheel.js" },
+  "files": ["bin", "src", "README.md", "LICENSE"],
+  "engines": { "node": ">=18" },
+  "scripts": { "test": "node --test" },
+  "keywords": ["ai","agent","self-improvement","traces","eval","open-format","zero-dependency"],
+  "license": "MIT"
+}
