@@ -16,6 +16,7 @@ import { parseProposal } from "../src/propose/parse.js";
 import { buildEvalContract } from "../src/propose/contract.js";
 import { toSelfPatch } from "../src/propose/assemble.js";
 import { routeCluster } from "../src/propose/targets.js";
+import { buildAtlas, renderAtlasHtml } from "../src/report/atlas.js";
 
 function fail(message, code = 1) { process.stderr.write(`flywheel: ${message}\n`); process.exitCode = code; }
 const USAGE = `Usage:
@@ -24,6 +25,7 @@ const USAGE = `Usage:
   flywheel clusters --in <episodesDir> [--min-size 3] [--top N] [--json]
   flywheel propose --cluster <signatureOrId> --in <episodesDir> --llm <codex|echo> [--out <file>] [--force-demo]
   flywheel measure --patch <patchFile> [--apply] [--runner node] [--keep]
+  flywheel report --in <episodesDir> [--out atlas.html] [--open]
 `;
 
 function parseHarvest(argv) {
@@ -59,6 +61,7 @@ function parseArgs(argv) {
   if (argv[0] === "clusters") return parseFlags(argv, new Map([["--in", "inDir"], ["--min-size", "minSize"], ["--top", "top"]]), new Map([["--json", "json"]]));
   if (argv[0] === "propose") return parseFlags(argv, new Map([["--cluster", "cluster"], ["--in", "inDir"], ["--llm", "llm"], ["--out", "outFile"], ["--timeout", "timeout"]]), new Map([["--force-demo", "forceDemo"]]));
   if (argv[0] === "measure") return parseFlags(argv, new Map([["--patch", "patchFile"], ["--runner", "runner"]]), new Map([["--apply", "apply"], ["--keep", "keep"]]));
+  if (argv[0] === "report") return parseFlags(argv, new Map([["--in", "inDir"], ["--out", "outFile"]]), new Map([["--open", "open"]]));
   return null;
 }
 
@@ -362,6 +365,34 @@ async function measure(options) {
   }
 }
 
+async function report(options) {
+  if (!options.inDir) throw new Error("report requires --in <episodesDir>");
+  const records = loadEpisodes(options.inDir);
+  const episodes = records.map((item) => item.episode);
+  if (episodes.some((episode) => !objectOutcome(episode?.outcome) || episode.outcome.method === "unlabeled")) {
+    throw new Error(`episodes are not labeled; run flywheel label --in ${options.inDir} --out ${options.inDir} first`);
+  }
+  const clustersFile = path.join(path.dirname(path.resolve(options.inDir)), "clusters.json");
+  if (!existsSync(clustersFile)) throw new Error(`missing clusters file: ${clustersFile}; run flywheel clusters --in ${options.inDir} first`);
+  const clusterData = readJson(clustersFile, "clusters file");
+  if (!Array.isArray(clusterData)) throw new Error(`clusters file must contain an array: ${clustersFile}`);
+  const atlas = buildAtlas(episodes, clusterData);
+  atlas.generatedAtNote = `Generated ${new Date().toISOString()}`;
+  const outFile = path.resolve(options.outFile ?? "atlas.html");
+  mkdirSync(path.dirname(outFile), { recursive: true });
+  writeFileSync(outFile, renderAtlasHtml(atlas));
+  if (options.open) {
+    const command = process.platform === "darwin" ? "open" : (process.platform === "win32" ? "cmd" : "xdg-open");
+    const args = process.platform === "win32" ? ["/c", "start", "", outFile] : [outFile];
+    const child = spawn(command, args, { detached: true, stdio: "ignore" });
+    child.on("error", (error) => process.stderr.write(`flywheel: could not open report: ${error.message}\n`));
+    child.unref();
+  }
+  process.stdout.write(`${outFile}\n`);
+}
+
+function objectOutcome(value) { return value !== null && typeof value === "object" && !Array.isArray(value); }
+
 const argv = process.argv.slice(2);
 if (argv.length === 1 && ["--help", "-h", "help"].includes(argv[0])) process.stdout.write(USAGE);
 else {
@@ -374,6 +405,7 @@ else {
       else if (options.command === "clusters") await clusters(options);
       else if (options.command === "propose") await propose(options);
       else if (options.command === "measure") await measure(options);
+      else if (options.command === "report") await report(options);
     } catch (error) { fail(error.message); }
   }
 }
