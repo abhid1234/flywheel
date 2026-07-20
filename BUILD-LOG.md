@@ -196,3 +196,10 @@ attests every self-edit. This is the deliverable the whole project was arguing f
 - `loop/attest.js` — provenant adapter (above)
 - `measure/suite.js` — `clusterToTrialSuite` + deterministic sealed `splitHeldout` (salt-hashed)
 - `measure/verdict.js` — `judge()`: helped/regressed/no_effect/inconclusive/overfit; n<60 -> can't exceed inconclusive
+
+## 2026-07-20 — Failure Atlas (136 tests). Standalone deliverable.
+`flywheel report` renders a single self-contained HTML atlas from the real corpus (838 episodes):
+headline tiles, failures-by-error-class bars, top failure modes with exemplars, per-project +
+per-day breakdowns, honesty caveats surfaced at the top. Pure `src/report/atlas.js` + bin renderer,
+0 external requests, XSS-safe. Data note: the "unknown 81%" class = weak-signal fails with no
+witnessed error object (api_error/interrupted/stuck-retry) — a hand-polish item; caveat box flags it.
