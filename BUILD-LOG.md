@@ -133,3 +133,36 @@ doesn't move.
 2. Demonstrate the closed loop on the PyYAML case at n=1, explicitly labelled a MECHANISM demo,
    not a statistical claim — the plan sanctions this ("promote deterministic-contract fixes on
    deterministic evidence; make no aggregate claim").
+
+## 2026-07-20 — M2 PROVEN + committed (121 tests)
+
+C4d/C4e fixed `isBenignNonZero` (scan OUTPUT not command; cover exit 2 + listing/banner shapes):
+false-positive failures 49 -> 41, benign filtered 6 -> 26. The bogus `ls`/`grep` clusters are gone.
+
+C11 wired the CLI seam: `label` / `clusters` / `propose` / `measure`. All logic stayed in pure
+`src/`; only `bin/flywheel.js` touches `node:`. Codex + stdin-closed + timeout guards baked in.
+
+### M2 — the closed loop, demonstrated live end-to-end
+`clusters -> propose -> witness_replay contract -> measure`:
+- Negative (honest): a `context` note proposed for `python3 import googleapiclient` -> measure
+  reports `before=RED after=RED, helped=false`. The gate REFUSED to certify a fix that didn't fix
+  anything. A text note can't cure a missing pip package — and the system says so.
+- Positive: a recorded production witness (`node check.mjs` -> ENOENT), replayed UNCHANGED after
+  the real cause is fixed, goes `exit 1 -> exit 0` (RED -> GREEN). Falsifiable improvement, n=1,
+  licensed by truecall's ~0 false-positive rate. This is the whole thesis working.
+
+### Where it stands honestly
+- 121 tests, zero deps, committed `9105df6`. 23 src modules, 14 test files.
+- Full pipeline runs on the real 440MB corpus in ~2s: 837 episodes, 41 real failures,
+  ~32 replayable witnesses, 4 clusters>=3, 1-2 proposable.
+- **Statistical arm (M3) remains correctly blocked at n=0 gold.** M1 gate unrunnable because the
+  factory produces no gold labels (leakage guard demotes all 22) and its transcripts are on the
+  unreachable mini.
+- **KC-6 shape confirmed:** the mechanism is real and the guards hold; whether prompt/skill fixes
+  move the OUTCOME is unproven and needs gold + the statistical arm. That is the honest finding,
+  and it is exactly what the plan pre-registered as a publishable result.
+
+### To unblock further (all need the mini back)
+1. factory-tick.sh -> emit structured test output (tap-json/JUnit) so factory labels become gold.
+2. Sync factory transcripts to feed the labeler its validation set.
+3. Then M3: A/A calibration -> statistical arm at n>=60.
