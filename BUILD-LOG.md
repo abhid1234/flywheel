@@ -203,3 +203,28 @@ headline tiles, failures-by-error-class bars, top failure modes with exemplars, 
 per-day breakdowns, honesty caveats surfaced at the top. Pure `src/report/atlas.js` + bin renderer,
 0 external requests, XSS-safe. Data note: the "unknown 81%" class = weak-signal fails with no
 witnessed error object (api_error/interrupted/stuck-retry) — a hand-polish item; caveat box flags it.
+
+## 2026-07-20 — MINI RECOVERED + M1 GATE PASSES
+
+**"Mini unreachable" was Tailscale STOPPED on the MacBook** — not the mini. The mini has been up
+15 days. Restarted Tailscale; mini back in tailnet (100.103.235.124) and reachable over LAN (10.0.0.97).
+Nothing was needed from Abhi. SSH (key-only) works over both paths.
+
+Pulled 104 factory transcripts (19MB) from the mini -> harvested + labeled.
+
+### M1 GATE: PASSES (3/4 documented failures recovered, threshold >=3)
+- ✅ cg validate / TAP integration failure -> labeled FAIL, strong
+- ✅ command missing from bin/cg.js -> FAIL, strong
+- ✅ impl test/build failure -> FAIL, strong
+- ❌ constraintguard #23 rework ("event_msg exclusion never actually tested") -> NOT recovered.
+     Honest + expected: that was a REVIEW-stage SEMANTIC defect (the test passes but doesn't test
+     the thing), invisible from exit codes. It is exactly the silent-failure class that needs the
+     review verdict, not transcript signals. The labeler correctly does not fabricate a signal it
+     cannot see.
+
+Factory transcripts: 104 episodes, labels {fail 41, pass 14, unknown 49}, tiers {strong 30, weak 25}.
+27 strong fails, 24 with replayable witnesses.
+
+**Consequence:** the labeler is validated against ground truth. The remaining blocker for the
+STATISTICAL arm (M3) is gold-label VOLUME (need n>=60; merge-status from GitHub can supply it) and
+the A/A calibration run. Both are now reachable — mini is back.
