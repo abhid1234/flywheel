@@ -81,7 +81,7 @@ test("recognizes conservative benign exit-one cases", () => {
   assert.equal(isBenignNonZero({ exitCode: 1, errorText: "=== git state ===\n?? ops/script.sh", command: "git status | grep changed" }), true);
   assert.equal(isBenignNonZero({ exitCode: 1, errorText: "missing", command: "command -v x || echo missing" }), true);
   assert.equal(isBenignNonZero({ exitCode: 2, errorText: "shell: /bin/bash\n---", command: 'echo "shell: $SHELL"; ls -la ~/.zshrc 2>/dev/null; echo "---"; grep -nE "KEY" ~/.zshrc' }), true);
-  assert.equal(isBenignNonZero({ exitCode: 1, errorText: "total 552\ndrwxr-xr-x@  6 abhijitdas  staff  192 19 Jul 13:54 .\ndrwx------@ 18 ...", command: 'ls -la ~/Desktop/"Founder Letters"/ 2>/dev/null; echo "---SCRATCHPAD---"; ls -la /tmp/missing' }), true);
+  assert.equal(isBenignNonZero({ exitCode: 1, errorText: "total 552\ndrwxr-xr-x@  6 dev  staff  192 19 Jul 13:54 .\ndrwx------@ 18 ...", command: 'ls -la ~/Desktop/"Founder Letters"/ 2>/dev/null; echo "---SCRATCHPAD---"; ls -la /tmp/missing' }), true);
   assert.equal(isBenignNonZero({ exitCode: 1, errorText: "=== x ===\n---", command: "diagnostic" }), true);
   assert.equal(isBenignNonZero({ exitCode: 1, errorText: "   \n", command: "diagnostic" }), true);
 });

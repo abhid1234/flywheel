@@ -33,7 +33,7 @@ test("cmdHead normalizes real shell command forms", () => {
     ["sleep 25; node bin/x.js", "sleep <N>"],
     ["python3 -c \"import yaml\" && echo ok", "python3"],
     ["sudo npm test", "npm test"],
-    ["grep -c foo /Users/abhijitdas/x.txt", "grep <PATH>"],
+    ["grep -c foo /Users/dev/x.txt", "grep <PATH>"],
     ["cd /tmp", "cd"],
   ];
   for (const [command, expected] of cases) {
@@ -43,9 +43,9 @@ test("cmdHead normalizes real shell command forms", () => {
 
 test("signatures never expose machine-specific absolute paths", () => {
   const commands = [
-    "/Users/abhijitdas/bin/tool /private/tmp/input.txt",
-    "FOO=/private/cache cd /Users/abhijitdas/work && grep value /private/data/file",
-    "sudo cat /Users/abhijitdas/secret",
+    "/Users/dev/bin/tool /private/tmp/input.txt",
+    "FOO=/private/cache cd /Users/dev/work && grep value /private/data/file",
+    "sudo cat /Users/dev/secret",
   ];
   for (const command of commands) {
     const signature = errorSignature({ tool: "Bash", input: { command }, errorText: "failed" });
