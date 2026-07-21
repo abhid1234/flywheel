@@ -8,8 +8,9 @@ function useful(rec) {
   return blocks(rec).some((b) => b?.type === "text" && typeof b.text === "string" && b.text.trim());
 }
 
-export function segmentRecords(records) {
+export function segmentRecords(records, opts = {}) {
   if (!Array.isArray(records)) return [];
+  const maxGroupRecords = Number.isInteger(opts?.maxGroupRecords) && opts.maxGroupRecords >= 1 ? opts.maxGroupRecords : Infinity;
   const valid = records.filter((r) => r !== null && typeof r === "object" && !Array.isArray(r));
   const byUuid = new Map(valid.filter((r) => typeof r.uuid === "string").map((r) => [r.uuid, r]));
   const memo = new Map();
@@ -34,11 +35,12 @@ export function segmentRecords(records) {
   for (const rec of valid) {
     const info = classifyRecord(rec);
     const promptId = resolve(rec) ?? `_orphan:${info.sessionId ?? "unknown"}`;
-    if (!groups.has(promptId)) groups.set(promptId, { promptId, records: [], sessionId: info.sessionId });
+    if (!groups.has(promptId)) groups.set(promptId, { promptId, records: [], sessionId: info.sessionId, truncated: false });
     const group = groups.get(promptId);
-    group.records.push(rec);
+    if (group.records.length < maxGroupRecords) group.records.push(rec);
+    else group.truncated = true;
     if (group.sessionId == null && info.sessionId != null) group.sessionId = info.sessionId;
   }
-  return [...groups.values()].map((g) => ({ ...g, records: g.records.sort((a, b) => String(a.timestamp ?? "").localeCompare(String(b.timestamp ?? ""))) }))
+  return [...groups.values()].map((g) => ({ promptId: g.promptId, records: g.records.sort((a, b) => String(a.timestamp ?? "").localeCompare(String(b.timestamp ?? ""))), sessionId: g.sessionId, ...(g.truncated ? { truncated: true } : {}) }))
     .filter((g) => !g.records.every(isNoiseRecord) && g.records.some(useful));
 }

@@ -3,7 +3,11 @@ import { parseToolResult } from "./exitcode.js";
 function blocks(rec) { return Array.isArray(rec?.message?.content) ? rec.message.content : []; }
 function cap(text) {
   if (typeof text !== "string") return "";
-  return text.length <= 2048 ? text : `${text.slice(0, 1024)} …[truncated]… ${text.slice(-1024)}`;
+  if (text.length <= 2048) return text;
+  const marker = " …[truncated]… ";
+  const remaining = 2048 - marker.length;
+  const head = Math.ceil(remaining / 2);
+  return `${text.slice(0, head)}${marker}${text.slice(-(remaining - head))}`;
 }
 
 export function extractSteps(shell) {

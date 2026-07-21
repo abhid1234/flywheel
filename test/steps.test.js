@@ -25,5 +25,6 @@ test("error text retains head and tail with truncation marker", () => {
   const shell = { records: [{ uuid: "a", timestamp: "1", message: { content: [{ type: "tool_use", id: "t", name: "Bash", input: {} }] } }, { uuid: "b", timestamp: "2", toolUseResult: {}, message: { content: [{ type: "tool_result", tool_use_id: "t", content: output, is_error: true }] } }] };
   const text = extractSteps(shell)[0].errorText;
   assert.ok(text.includes("…[truncated]…"));
-  assert.ok(text.startsWith("a".repeat(1024))); assert.ok(text.endsWith("a".repeat(1024)));
+  assert.equal(text.length, 2048);
+  assert.ok(text.startsWith("a".repeat(1000))); assert.ok(text.endsWith("a".repeat(1000)));
 });

@@ -142,6 +142,7 @@ export function buildEpisode(shell, steps, opts = {}) {
       steps: safeSteps,
       artifacts: artifacts(safeSteps),
       signals: {
+        ...(shell?.truncated === true ? { truncated_group: true } : {}),
         tool_calls: safeSteps.length,
         errored_tool_results: safeSteps.filter((s) => s.ok === false).length,
         benign_nonzero: benignNonzero,

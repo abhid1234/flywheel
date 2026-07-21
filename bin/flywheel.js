@@ -26,7 +26,7 @@ import { summarizeStability } from "../src/measure/calibrate.js";
 
 function fail(message, code = 1) { process.stderr.write(`flywheel: ${message}\n`); process.exitCode = code; }
 const USAGE = `Usage:
-  flywheel harvest <projectsDir> --out <outDir> [--exclude-sidechains|--include-sidechains] [--limit N] [--quiet]
+  flywheel harvest <projectsDir> --out <outDir> [--exclude-sidechains|--include-sidechains] [--limit N] [--max-group-records N] [--quiet]
   flywheel label --in <episodesDir> --out <episodesDir>
   flywheel gold --in <episodesDir> --repos <owner/repo,owner/repo> [--out <dir>]
   flywheel calibrate --witnesses <clusterFileOrDir> [--repeats 20] [--timeout-ms 5000] [--max-witnesses 20] [--max-total-ms 60000] [--include-timeouts]
@@ -40,16 +40,18 @@ const USAGE = `Usage:
 
 function parseHarvest(argv) {
   if (!argv[1]) return null;
-  const result = { command: argv[0], projectsDir: argv[1], exclude: true, limit: Infinity, quiet: false };
+  const result = { command: argv[0], projectsDir: argv[1], exclude: true, limit: Infinity, maxGroupRecords: 5000, quiet: false };
   for (let i = 2; i < argv.length; i += 1) {
     if (argv[i] === "--out") result.outDir = argv[++i];
     else if (argv[i] === "--exclude-sidechains") result.exclude = true;
     else if (argv[i] === "--include-sidechains") result.exclude = false;
     else if (argv[i] === "--quiet") result.quiet = true;
     else if (argv[i] === "--limit") result.limit = Number(argv[++i]);
+    else if (argv[i] === "--max-group-records") result.maxGroupRecords = Number(argv[++i]);
     else return null;
   }
-  return result.outDir && (result.limit === Infinity || (Number.isFinite(result.limit) && result.limit >= 0)) ? result : null;
+  return result.outDir && (result.limit === Infinity || (Number.isFinite(result.limit) && result.limit >= 0))
+    && Number.isInteger(result.maxGroupRecords) && result.maxGroupRecords >= 1 ? result : null;
 }
 
 function parseFlags(argv, valueFlags, booleanFlags) {
@@ -116,9 +118,16 @@ async function readJsonl(file, manifest) {
   const records = [];
   const input = createReadStream(file, { encoding: "utf8", highWaterMark: 64 * 1024 });
   const lines = readline.createInterface({ input, crlfDelay: Infinity });
-  for await (const line of lines) {
+  let first = true;
+  for await (const rawLine of lines) {
     manifest.lines_read += 1;
-    try { records.push(JSON.parse(line)); } catch { manifest.lines_unparseable += 1; }
+    const line = first && rawLine.charCodeAt(0) === 0xfeff ? rawLine.slice(1) : rawLine;
+    first = false;
+    try {
+      const record = JSON.parse(line);
+      if (record !== null && typeof record === "object" && !Array.isArray(record)) records.push(record);
+      else manifest.lines_unparseable += 1;
+    } catch { manifest.lines_unparseable += 1; }
   }
   return records;
 }
@@ -139,7 +148,7 @@ async function harvest(options) {
     manifest.files_scanned += 1;
     manifest.files_by_kind[item.sourceKind] += 1;
     manifest.bytes_read += statSync(item.file).size;
-    for (const shell of segmentRecords(records)) {
+    for (const shell of segmentRecords(records, { maxGroupRecords: options.maxGroupRecords })) {
       manifest.shells += 1;
       manifest.shells_seen += 1;
       const key = `${shell.sessionId ?? ""}\u0000${shell.promptId ?? ""}\u0000${item.agentId}`;
