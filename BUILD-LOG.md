@@ -250,3 +250,16 @@ M0/M1/M2 done and proven. M3 (statistical arm) honestly blocked on gold volume �
   Flagged for Abhi — will do carefully (pure addition, backup, syntax-check, no unprompted restart).
 - G5 live-capture hook: wire truecall PostToolUse hook. Touches ~/.claude/settings.json (Abhi's live
   config). Built-but-not-installed is the right default; needs Abhi's OK to enable.
+
+## 2026-07-21 ~02:00 — wakeup 1: fixed a live deploy bug + quality passes
+- **Real bug caught by verification:** the mini launchd tick was firing but SILENTLY FAILING —
+  launchd's minimal PATH has no node ("node: command not found"). The "compounding" wasn't happening.
+  Fixed: absolute node path in the tick + EnvironmentVariables>PATH in the plist. Deploy now
+  version-controlled in deploy/ with the gotcha documented.
+- Atlas clarity: separated witnessed failures (41) from weak-signal proxy fails (177) — killed the
+  misleading "unknown 81%" bar. 175 tests.
+- Classifier: +4 classes from real corpus patterns (runtime_error, shell_syntax, harness_blocked,
+  usage_error). Witnessed 'other' 58% -> 31%; new harness_blocked:sleep cluster. 181 tests.
+- State: 181 tests, 18 commits, deployed (now actually working), all pushed. Excellent shape.
+- Note: mini corpus stable at ~907 (factory dormant = no new agent work to harvest; tick is healthy,
+  it compounds when new work happens).
