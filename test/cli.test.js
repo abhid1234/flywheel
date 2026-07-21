@@ -41,13 +41,13 @@ function runCli(args, cwd) {
 test("CLI --help exits zero and lists every workflow command", () => {
   const result = runCli(["--help"]);
   assert.equal(result.status, 0, result.stderr);
-  for (const command of ["harvest", "label", "clusters", "propose", "gate", "measure", "gold", "calibrate", "loop", "status", "report", "trend"]) {
+  for (const command of ["harvest", "label", "clusters", "longtail", "propose", "gate", "measure", "gold", "calibrate", "loop", "status", "report", "trend"]) {
     assert.match(result.stdout, new RegExp(`\\b${command}\\b`));
   }
 });
 
 test("CLI provides help with an example for every executable subcommand", () => {
-  for (const command of ["harvest", "label", "clusters", "propose", "measure", "gold", "calibrate", "loop", "status", "report", "trend", "version"]) {
+  for (const command of ["harvest", "label", "clusters", "longtail", "propose", "measure", "gold", "calibrate", "loop", "status", "report", "trend", "version"]) {
     const result = runCli([command, "--help"]);
     assert.equal(result.status, 0, `${command}: ${result.stderr}`);
     assert.match(result.stdout, /^Usage:/);
@@ -211,6 +211,24 @@ test("CLI label then clusters writes ranked clusters", () => {
   const saved = JSON.parse(readFileSync(path.join(root, "clusters.json"), "utf8"));
   assert.equal(saved[0].size, 3);
   assert.equal(saved[0].created.endsWith("Z"), true);
+});
+
+test("CLI longtail --json returns rare groups and loner summary", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "flywheel-longtail-"));
+  const episodesDir = path.join(root, "episodes");
+  mkdirSync(episodesDir);
+  const make = (id, error) => ({
+    id, session_id: `s_${id}`, project: "demo", started: `2026-01-0${id}T00:00:00Z`,
+    request: { text: "fix it" }, steps: [{ tool: "bash", ok: false, errorText: error }],
+    outcome: { label: "fail", tier: "unknown" }, failure: { signature: `bash:timeout:test:${id}`, errorText: error },
+  });
+  const episodes = [make(1, "worker cache failed during package build alpha"), make(2, "worker cache failed during package build beta")];
+  writeFileSync(path.join(episodesDir, "demo.jsonl"), `${episodes.map(JSON.stringify).join("\n")}\n`);
+  const result = runCli(["longtail", "--in", episodesDir, "--json"], root);
+  assert.equal(result.status, 0, result.stderr);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.groups[0].size, 2);
+  assert.deepEqual(parsed.loners, { byToolClass: [], total: 0 });
 });
 
 function proposalFixture(proposable = true) {

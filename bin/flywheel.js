@@ -10,6 +10,7 @@ import { extractSteps } from "../src/harvest/steps.js";
 import { buildEpisode } from "../src/harvest/episode.js";
 import { labelSession } from "../src/label/transcript.js";
 import { clusterEpisodes } from "../src/cluster/group.js";
+import { mineLongtail } from "../src/cluster/longtail.js";
 import { isProposable, rankClusters } from "../src/cluster/rank.js";
 import { buildBrief } from "../src/propose/brief.js";
 import { renderPrompt } from "../src/propose/prompt.js";
@@ -35,6 +36,7 @@ const COMMAND_HELP = {
   label: { description: "Label episode outcomes and confidence tiers.", usage: "label --in <episodesDir> --out <episodesDir>", example: "flywheel label --in .flywheel/episodes --out .flywheel/episodes" },
   promote: { description: "Promote episode outcomes using live hook captures.", usage: "promote --in <episodesDir>", example: "flywheel promote --in .flywheel/episodes" },
   clusters: { description: "Group and rank recurring failure signatures.", usage: "clusters --in <episodesDir> [--min-size 3] [--top N] [--json]", example: "flywheel clusters --in .flywheel/episodes --top 10" },
+  longtail: { description: "Inspect rare failures using looser, read-only grouping.", usage: "longtail --in <dir> [--min-size 3] [--jaccard 0.5] [--top N] [--json]", example: "flywheel longtail --in ~/.flywheel/episodes --top 10" },
   propose: { description: "Create a candidate self-patch for a cluster.", usage: "propose --cluster <signatureOrId> --in <episodesDir> --llm <codex|echo> [--target <path>] [--out <file>] [--timeout <ms>] [--force-demo]", example: "flywheel propose --cluster cl_demo --in .flywheel/episodes --llm echo" },
   measure: { description: "Replay a witness to measure a candidate patch.", usage: "measure --patch <patchFile> [--apply] [--runner node] [--keep]", example: "flywheel measure --patch .flywheel/patches/cl_demo.json" },
   gold: { description: "Enrich outcomes with GitHub merge-status evidence.", usage: "gold --in <episodesDir> --repos <owner/repo,owner/repo> [--out <dir>]", example: "flywheel gold --in .flywheel/episodes --repos owner/repo" },
@@ -90,6 +92,7 @@ function parseArgs(argv) {
   if (argv[0] === "calibrate") return parseFlags(argv, new Map([["--witnesses", "witnesses"], ["--repeats", "repeats"], ["--timeout-ms", "timeoutMs"], ["--max-witnesses", "maxWitnesses"], ["--max-total-ms", "maxTotalMs"]]), new Map([["--include-timeouts", "includeTimeouts"]]));
   if (argv[0] === "trial-run") return parseFlags(argv, new Map([["--cluster", "cluster"], ["--in", "inDir"], ["--patch", "patchFile"], ["--agent", "agent"], ["--repeats", "repeats"], ["--timeout-ms", "timeoutMs"], ["--max-trials", "maxTrials"], ["--budget-usd", "budgetUsd"], ["--out", "outFile"]]), new Map());
   if (argv[0] === "clusters") return parseFlags(argv, new Map([["--in", "inDir"], ["--min-size", "minSize"], ["--top", "top"]]), new Map([["--json", "json"]]));
+  if (argv[0] === "longtail") return parseFlags(argv, new Map([["--in", "inDir"], ["--min-size", "minSize"], ["--jaccard", "jaccard"], ["--top", "top"]]), new Map([["--json", "json"]]));
   if (argv[0] === "propose") return parseFlags(argv, new Map([["--cluster", "cluster"], ["--in", "inDir"], ["--llm", "llm"], ["--target", "target"], ["--out", "outFile"], ["--timeout", "timeout"]]), new Map([["--force-demo", "forceDemo"]]));
   if (argv[0] === "measure") return parseFlags(argv, new Map([["--patch", "patchFile"], ["--runner", "runner"]]), new Map([["--apply", "apply"], ["--keep", "keep"]]));
   if (argv[0] === "report") return parseFlags(argv, new Map([["--in", "inDir"], ["--out", "outFile"]]), new Map([["--open", "open"]]));
@@ -470,6 +473,24 @@ async function clusters(options) {
     process.stdout.write("rank\tsize\tgold+strong\twitnesses\tproposable\tsignature\n");
     shown.forEach((cluster, index) => process.stdout.write(`${index + 1}\t${cluster.size}\t${(cluster.tierCounts?.gold ?? 0) + (cluster.tierCounts?.strong ?? 0)}\t${cluster.witnesses?.length ?? 0}\t${isProposable(cluster) ? "✓" : "✗"}\t${cluster.signature}\n`));
   }
+}
+
+async function longtail(options) {
+  if (!options.inDir) throw new Error("longtail requires --in <episodesDir>");
+  const minSize = options.minSize === undefined ? 3 : Number(options.minSize);
+  const jaccard = options.jaccard === undefined ? 0.5 : Number(options.jaccard);
+  const top = options.top === undefined ? Infinity : Number(options.top);
+  if (!Number.isInteger(minSize) || minSize < 1) throw new Error("--min-size must be a positive integer");
+  if (!Number.isFinite(jaccard) || jaccard < 0 || jaccard > 1) throw new Error("--jaccard must be between 0 and 1");
+  if (!(top === Infinity || (Number.isInteger(top) && top >= 1))) throw new Error("--top must be a positive integer");
+  const episodes = loadEpisodes(options.inDir).map((item) => item.episode);
+  const result = mineLongtail(episodes, { minSize, jaccardThreshold: jaccard });
+  if (options.json) { process.stdout.write(`${JSON.stringify({ ...result, groups: result.groups.slice(0, top) }, null, 2)}\n`); return; }
+  process.stdout.write("READ-ONLY human-triage view — nothing here is proposable.\n\nRare patterns (grouped loosely)\nkey\tsize\tone exemplar\n");
+  result.groups.slice(0, top).forEach((group) => process.stdout.write(`${group.key}\t${group.size}\t${group.exemplars[0]?.error || group.exemplars[0]?.request || "—"}\n`));
+  process.stdout.write("\nTrue singletons\ntool:errorClass\tcount\n");
+  result.loners.byToolClass.forEach((row) => process.stdout.write(`${row.tool}:${row.errorClass}\t${row.count}\n`));
+  process.stdout.write(`total\t${result.loners.total}\n`);
 }
 
 function nonProposableReason(cluster) {
@@ -990,6 +1011,7 @@ else {
       else if (options.command === "gold") await gold(options);
       else if (options.command === "calibrate") await calibrate(options);
       else if (options.command === "clusters") await clusters(options);
+      else if (options.command === "longtail") await longtail(options);
       else if (options.command === "propose") await propose(options);
       else if (options.command === "measure") await measure(options);
       else if (options.command === "trial-run") await trialRun(options);
