@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import process from "node:process";
 import path from "node:path";
 import readline from "node:readline";
@@ -17,6 +17,10 @@ import { buildEvalContract } from "../src/propose/contract.js";
 import { toSelfPatch } from "../src/propose/assemble.js";
 import { routeCluster } from "../src/propose/targets.js";
 import { buildAtlas, renderAtlasHtml } from "../src/report/atlas.js";
+import { planLoop } from "../src/loop/orchestrate.js";
+import { buildAttestation } from "../src/loop/attest.js";
+import { flywheelPolicy } from "../src/loop/policy.js";
+import { canonicalize, sha256hex } from "../src/hash.js";
 
 function fail(message, code = 1) { process.stderr.write(`flywheel: ${message}\n`); process.exitCode = code; }
 const USAGE = `Usage:
@@ -26,6 +30,8 @@ const USAGE = `Usage:
   flywheel propose --cluster <signatureOrId> --in <episodesDir> --llm <codex|echo> [--out <file>] [--force-demo]
   flywheel measure --patch <patchFile> [--apply] [--runner node] [--keep]
   flywheel report --in <episodesDir> [--out atlas.html] [--open]
+  flywheel loop --in <episodesDir> [--llm codex|echo] [--apply] [--max N] [--dry-run]
+  flywheel status --in <episodesDir>
 `;
 
 function parseHarvest(argv) {
@@ -62,6 +68,8 @@ function parseArgs(argv) {
   if (argv[0] === "propose") return parseFlags(argv, new Map([["--cluster", "cluster"], ["--in", "inDir"], ["--llm", "llm"], ["--out", "outFile"], ["--timeout", "timeout"]]), new Map([["--force-demo", "forceDemo"]]));
   if (argv[0] === "measure") return parseFlags(argv, new Map([["--patch", "patchFile"], ["--runner", "runner"]]), new Map([["--apply", "apply"], ["--keep", "keep"]]));
   if (argv[0] === "report") return parseFlags(argv, new Map([["--in", "inDir"], ["--out", "outFile"]]), new Map([["--open", "open"]]));
+  if (argv[0] === "loop") return parseFlags(argv, new Map([["--in", "inDir"], ["--llm", "llm"], ["--max", "max"]]), new Map([["--apply", "apply"], ["--dry-run", "dryRun"]]));
+  if (argv[0] === "status") return parseFlags(argv, new Map([["--in", "inDir"]]), new Map());
   return null;
 }
 
@@ -268,9 +276,9 @@ function nonProposableReason(cluster) {
   return `size ${cluster?.size ?? 0}/3; gold+strong ${strong}/3; replayable witness ${witness ? "present" : "missing"}${cluster?.isLongTail ? "; long-tail clusters are not proposable" : ""}`;
 }
 
-function runChild(command, args, timeoutMs) {
+function runChild(command, args, timeoutMs, cwd) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"], ...(typeof cwd === "string" && cwd ? { cwd } : {}) });
     let stdout = "";
     let stderr = "";
     let timedOut = false;
@@ -391,6 +399,225 @@ async function report(options) {
   process.stdout.write(`${outFile}\n`);
 }
 
+function labelInMemory(records) {
+  const sessions = new Map();
+  for (const record of records) {
+    const key = String(record.episode?.session_id ?? "unknown");
+    if (!sessions.has(key)) sessions.set(key, []);
+    sessions.get(key).push(record);
+  }
+  for (const session of sessions.values()) {
+    session.sort((a, b) => String(a.episode?.started ?? "").localeCompare(String(b.episode?.started ?? "")));
+    const outcomes = labelSession(session.map((item) => item.episode));
+    session.forEach((item, index) => { item.episode.outcome = outcomes[index]; });
+  }
+  return records;
+}
+
+function jsonl(file) {
+  if (!existsSync(file)) return [];
+  return readFileSync(file, "utf8").split(/\r?\n/).filter((line) => line.trim()).flatMap((line) => {
+    try { return [JSON.parse(line)]; } catch { return []; }
+  });
+}
+
+function echoProposal(brief) {
+  const anchor = brief.targetCurrentText.split(/\r?\n/)[0];
+  if (!anchor) throw new Error(`proposal target is empty: ${brief.target}`);
+  return { summary: "Add deterministic flywheel guidance", layer: brief.layer, target: brief.target,
+    edit: { before: anchor, after: `${anchor}\nFlywheel note: replay the recorded witness before completing this task.` },
+    rationale: "Address the recurring witnessed failure.", expectedEffect: "The failure is prevented on replay." };
+}
+
+async function makeLoopPatch(cluster, episodes, llm) {
+  const target = routeCluster(cluster).surfaces[0];
+  const targetFile = path.resolve(target);
+  if (!existsSync(targetFile) || !statSync(targetFile).isFile()) throw new Error(`proposal target does not exist: ${target}`);
+  const brief = buildBrief(cluster, episodes, readFileSync(targetFile, "utf8"));
+  let llmText;
+  if (llm === "echo") llmText = `\`\`\`json\n${JSON.stringify(echoProposal(brief))}\n\`\`\``;
+  else {
+    const result = await runChild("codex", ["exec", "--sandbox", "read-only", "--skip-git-repo-check", "-m", "gpt-5.6-sol", renderPrompt(brief)], 180000);
+    if (result.code !== 0) throw new Error(`codex exited ${result.code}: ${result.stderr.trim()}`);
+    llmText = result.stdout;
+  }
+  const parsed = parseProposal(llmText, brief);
+  if (!parsed.ok) throw new Error(`proposal validation failed: ${parsed.errors.map((error) => error.message).join("; ")}`);
+  const contract = buildEvalContract(cluster, parsed.candidate);
+  return { patch: { ...toSelfPatch(parsed.candidate, contract, cluster), created: new Date().toISOString() }, contract };
+}
+
+let selfpatchModule;
+async function selfpatch() {
+  if (selfpatchModule !== undefined) return selfpatchModule;
+  try { selfpatchModule = await import(new URL("../../selfpatch/src/index.js", import.meta.url)); }
+  catch { selfpatchModule = null; }
+  return selfpatchModule;
+}
+
+function protectedTarget(target) {
+  const normalized = String(target ?? "").replaceAll("\\", "/").toLowerCase();
+  const base = path.basename(normalized);
+  return base === ".env" || base.endsWith(".key") || base.startsWith("id_") || base === "settings.json" ||
+    base === "package.json" || base.startsWith("credentials") || normalized.includes("/.ssh/") || normalized.includes("/.git/");
+}
+
+async function gatePatch(patch) {
+  if (protectedTarget(patch?.target)) return { decision: "block", reason: `touches protected surface "${patch.target}"` };
+  const module = await selfpatch();
+  if (typeof module?.gate === "function") {
+    try { return module.gate(patch, flywheelPolicy()); } catch (error) { return { decision: "block", reason: error.message }; }
+  }
+  const limits = flywheelPolicy().blast_radius_limits;
+  if ((patch?.blast_radius?.surfaces?.length ?? 0) > limits.max_surfaces ||
+      (patch?.blast_radius?.files_changed ?? 0) > limits.max_files_changed ||
+      (patch?.blast_radius?.lines_changed ?? 0) > limits.max_lines_changed) return { decision: "block", reason: "blast radius exceeds policy" };
+  return patch?.requires === "auto" && ["context", "skill"].includes(patch?.layer)
+    ? { decision: "approve", reason: "within policy" } : { decision: "human-gate", reason: "approval required" };
+}
+
+async function linkedDecision(record, entries) {
+  const base = { ...record, seq: entries.length, prev: entries.at(-1)?.hash ?? null };
+  const module = await selfpatch();
+  try { return { ...base, hash: typeof module?.hashEntry === "function" ? module.hashEntry(base) : `sha256:${sha256hex(canonicalize(base))}` }; }
+  catch { return { ...base, hash: `sha256:${sha256hex(canonicalize(base))}` }; }
+}
+
+async function attestApplied(patch, measureResult, cluster, parent) {
+  const built = buildAttestation(patch, { ...measureResult, verdict: "helped", strategy: "witness_replay" }, cluster);
+  try {
+    const provenant = await import(new URL("../../provenant/src/index.js", import.meta.url));
+    const record = provenant.attest(built.artifact.hash, { ...built.meta, created: new Date().toISOString() });
+    appendFileSync(path.join(parent, "attestations.jsonl"), `${JSON.stringify(record)}\n`);
+    return record.id;
+  } catch { return undefined; }
+}
+
+async function replayPatch(patch, cluster, apply) {
+  const witness = cluster.witnesses.find((item) => item?.replayable === true && typeof item?.cmd === "string");
+  if (!witness) return { before: 1, after: 1, helped: false, regressed: false };
+  const runWitness = () => process.platform === "win32"
+    ? runChild("cmd", ["/d", "/s", "/c", witness.cmd], 180000, witness.cwd)
+    : runChild("/bin/sh", ["-c", witness.cmd], 180000, witness.cwd);
+  const beforeRun = await runWitness().catch(() => ({ code: 1 }));
+  const target = path.resolve(patch.target);
+  const original = readFileSync(target, "utf8");
+  const anchor = patch?.diff?.before;
+  const first = typeof anchor === "string" && anchor ? original.indexOf(anchor) : -1;
+  if (patch?.diff?.format !== "before_after" || first < 0 || original.indexOf(anchor, first + anchor.length) >= 0) {
+    throw new Error("patch anchor drifted: before text must occur verbatim exactly once");
+  }
+  const changed = original.slice(0, first) + patch.diff.after + original.slice(first + anchor.length);
+  writeFileSync(target, changed);
+  let afterRun;
+  try { afterRun = await runWitness().catch(() => ({ code: 1 })); }
+  finally {
+    const helped = beforeRun.code !== 0 && afterRun?.code === 0;
+    if (!(apply && helped)) writeFileSync(target, original);
+    else writeFileSync(`${target}.flywheel.bak`, original);
+  }
+  return { before: beforeRun.code, after: afterRun.code, helped: beforeRun.code !== 0 && afterRun.code === 0, regressed: beforeRun.code === 0 && afterRun.code !== 0 };
+}
+
+function summaryRow(signature, gate, measureResult, result, reason = "") {
+  const measured = measureResult ? `${measureResult.before}->${measureResult.after}` : "-";
+  process.stdout.write(`${signature}\t${gate}\t${measured}\t${result}${reason ? `\t${reason}` : ""}\n`);
+}
+
+async function loop(options) {
+  if (!options.inDir) throw new Error("loop requires --in <episodesDir>");
+  const llm = options.llm ?? "codex";
+  if (!["codex", "echo"].includes(llm)) throw new Error("--llm must be codex or echo");
+  const max = options.max === undefined ? Infinity : Number(options.max);
+  if (!(max === Infinity || (Number.isInteger(max) && max >= 1))) throw new Error("--max must be a positive integer");
+  const records = labelInMemory(loadEpisodes(options.inDir));
+  const episodes = records.map((item) => item.episode);
+  let ranked = rankClusters(clusterEpisodes(episodes, { minSize: 3 }));
+  let plan = planLoop(ranked, { ranked: true, max });
+  // A precomputed synthetic cluster is useful for mechanism demos where the
+  // raw corpus was deliberately minimized. Prefer freshly derived data unless
+  // it yields no actionable cluster.
+  const priorClusters = path.join(path.dirname(path.resolve(options.inDir)), "clusters.json");
+  if (plan.actions.length === 0 && existsSync(priorClusters)) {
+    const saved = readJson(priorClusters, "clusters file");
+    if (Array.isArray(saved) && saved.length) {
+      const savedPlan = planLoop(saved, { max });
+      if (savedPlan.actions.length > 0) { ranked = rankClusters(saved); plan = savedPlan; }
+    }
+  }
+  process.stdout.write("cluster\tgate\tmeasure\tresult\treason\n");
+  for (const item of plan.skipped) summaryRow(item.cluster_signature, "-", null, "skipped", item.reason);
+  if (options.dryRun) {
+    for (const action of plan.actions) summaryRow(action.cluster_signature, "planned", null, "queued", "dry-run");
+    process.stdout.write(`Plan: ${plan.actions.length} action(s), ${plan.skipped.length} skipped; dry-run changed nothing.\n`);
+    return;
+  }
+  const parent = path.dirname(path.resolve(options.inDir));
+  writeEpisodeRecords(records, options.inDir);
+  writeFileSync(path.join(parent, "clusters.json"), `${JSON.stringify(ranked.map((cluster) => ({ ...cluster, created: new Date().toISOString() })), null, 2)}\n`);
+  const ledgerFile = path.join(parent, "ledger.jsonl");
+  const entries = jsonl(ledgerFile);
+  const applied = new Set(entries.filter((entry) => entry.applied === true).map((entry) => entry.cluster_signature));
+  const decisions = [];
+  for (const item of plan.skipped) decisions.push({ item, gate: "skipped", reason: item.reason, measure: null, applied: false });
+  for (const action of plan.actions) {
+    if (applied.has(action.cluster_signature)) {
+      summaryRow(action.cluster_signature, "approve", null, "skipped", "already_applied");
+      decisions.push({ item: action, gate: "approve", reason: "already_applied", measure: null, applied: false });
+      continue;
+    }
+    try {
+      const { patch, contract } = await makeLoopPatch(action.cluster, episodes, llm);
+      const patchesDir = path.join(parent, "patches");
+      const trialsDir = path.join(parent, "trials");
+      mkdirSync(patchesDir, { recursive: true });
+      mkdirSync(trialsDir, { recursive: true });
+      writeFileSync(path.join(patchesDir, `${action.cluster.id}.json`), `${JSON.stringify(patch, null, 2)}\n`);
+      writeFileSync(path.join(trialsDir, `${action.cluster.id}.mjs`), contract.trialScript);
+      const gated = await gatePatch(patch);
+      if (gated.decision !== "approve") {
+        summaryRow(action.cluster_signature, gated.decision, null, "queued", gated.reason);
+        decisions.push({ item: action, gate: gated.decision, reason: gated.reason, measure: null, applied: false });
+        continue;
+      }
+      const measured = await replayPatch(patch, action.cluster, options.apply === true);
+      const didApply = options.apply === true && measured.helped;
+      const attestationId = didApply ? await attestApplied(patch, measured, action.cluster, parent) : undefined;
+      const result = didApply ? "applied" : "queued";
+      const reason = measured.helped ? (options.apply ? "" : "--apply not set") : (measured.regressed ? "regressed" : "not_helped");
+      summaryRow(action.cluster_signature, gated.decision, measured, result, reason);
+      decisions.push({ item: action, gate: gated.decision, reason, measure: measured, applied: didApply, attestationId });
+    } catch (error) {
+      summaryRow(action.cluster_signature, "block", null, "queued", error.message);
+      decisions.push({ item: action, gate: "block", reason: error.message, measure: null, applied: false });
+    }
+  }
+  for (const decision of decisions) {
+    const record = await linkedDecision({ ts: new Date().toISOString(), cluster_signature: decision.item.cluster_signature,
+      layer: decision.item.layer, gate_decision: decision.gate, eval_strategy: decision.item.eval_strategy ?? null,
+      measure: decision.measure ?? { before: null, after: null, helped: false, regressed: false }, applied: decision.applied,
+      ...(decision.attestationId ? { attestation_id: decision.attestationId } : {}), ...(decision.reason ? { reason: decision.reason } : {}) }, entries);
+    appendFileSync(ledgerFile, `${JSON.stringify(record)}\n`);
+    entries.push(record);
+  }
+}
+
+async function status(options) {
+  if (!options.inDir) throw new Error("status requires --in <episodesDir>");
+  const episodes = loadEpisodes(options.inDir).map((item) => item.episode);
+  const tiers = { gold: 0, strong: 0, weak: 0, unknown: 0 };
+  let failures = 0;
+  for (const episode of episodes) {
+    const tier = Object.hasOwn(tiers, episode?.outcome?.tier) ? episode.outcome.tier : "unknown";
+    tiers[tier] += 1;
+    if (episode?.outcome?.label === "fail" || episode?.failure) failures += 1;
+  }
+  const parent = path.dirname(path.resolve(options.inDir));
+  const clusterData = existsSync(path.join(parent, "clusters.json")) ? readJson(path.join(parent, "clusters.json"), "clusters file") : [];
+  const ledger = jsonl(path.join(parent, "ledger.jsonl"));
+  process.stdout.write(`episodes: ${episodes.length}\nfailures: ${failures}\ntiers: ${JSON.stringify(tiers)}\nproposable clusters: ${clusterData.filter(isProposable).length}\npatches applied: ${ledger.filter((entry) => entry.applied === true).length}\nqueued: ${ledger.filter((entry) => entry.applied === false && entry.gate_decision !== "skipped" && entry.reason !== "already_applied").length}\nlast run: ${ledger.at(-1)?.ts ?? "never"}\n`);
+}
+
 function objectOutcome(value) { return value !== null && typeof value === "object" && !Array.isArray(value); }
 
 const argv = process.argv.slice(2);
@@ -406,6 +633,8 @@ else {
       else if (options.command === "propose") await propose(options);
       else if (options.command === "measure") await measure(options);
       else if (options.command === "report") await report(options);
+      else if (options.command === "loop") await loop(options);
+      else if (options.command === "status") await status(options);
     } catch (error) { fail(error.message); }
   }
 }
