@@ -23,12 +23,14 @@ import { flywheelPolicy } from "../src/loop/policy.js";
 import { canonicalize, sha256hex } from "../src/hash.js";
 import { goldFromMergeStatus } from "../src/label/merge_status.js";
 import { summarizeStability } from "../src/measure/calibrate.js";
+import { cmdHead } from "../src/harvest/signature.js";
 
 function fail(message, code = 1) { process.stderr.write(`flywheel: ${message}\n`); process.exitCode = code; }
 const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 const COMMAND_HELP = {
   harvest: { description: "Turn project transcripts into normalized episodes.", usage: "harvest <projectsDir> --out <outDir> [--exclude-sidechains|--include-sidechains] [--limit N] [--max-group-records N] [--quiet]", example: "flywheel harvest ~/.claude/projects --out ~/.flywheel" },
   label: { description: "Label episode outcomes and confidence tiers.", usage: "label --in <episodesDir> --out <episodesDir>", example: "flywheel label --in .flywheel/episodes --out .flywheel/episodes" },
+  promote: { description: "Promote episode outcomes using live hook captures.", usage: "promote --in <episodesDir>", example: "flywheel promote --in .flywheel/episodes" },
   clusters: { description: "Group and rank recurring failure signatures.", usage: "clusters --in <episodesDir> [--min-size 3] [--top N] [--json]", example: "flywheel clusters --in .flywheel/episodes --top 10" },
   propose: { description: "Create a candidate self-patch for a cluster.", usage: "propose --cluster <signatureOrId> --in <episodesDir> --llm <codex|echo> [--out <file>] [--timeout <ms>] [--force-demo]", example: "flywheel propose --cluster cl_demo --in .flywheel/episodes --llm echo" },
   measure: { description: "Replay a witness to measure a candidate patch.", usage: "measure --patch <patchFile> [--apply] [--runner node] [--keep]", example: "flywheel measure --patch .flywheel/patches/cl_demo.json" },
@@ -78,6 +80,7 @@ function parseFlags(argv, valueFlags, booleanFlags) {
 function parseArgs(argv) {
   if (argv[0] === "harvest") return parseHarvest(argv);
   if (argv[0] === "label") return parseFlags(argv, new Map([["--in", "inDir"], ["--out", "outDir"]]), new Map());
+  if (argv[0] === "promote") return parseFlags(argv, new Map([["--in", "inDir"]]), new Map());
   if (argv[0] === "gold") return parseFlags(argv, new Map([["--in", "inDir"], ["--repos", "repos"], ["--out", "outDir"]]), new Map());
   if (argv[0] === "calibrate") return parseFlags(argv, new Map([["--witnesses", "witnesses"], ["--repeats", "repeats"], ["--timeout-ms", "timeoutMs"], ["--max-witnesses", "maxWitnesses"], ["--max-total-ms", "maxTotalMs"]]), new Map([["--include-timeouts", "includeTimeouts"]]));
   if (argv[0] === "clusters") return parseFlags(argv, new Map([["--in", "inDir"], ["--min-size", "minSize"], ["--top", "top"]]), new Map([["--json", "json"]]));
@@ -273,6 +276,76 @@ async function label(options) {
     labels[value] = (labels[value] ?? 0) + 1;
   }
   process.stdout.write(`tiers ${JSON.stringify(tiers)}\nlabels ${JSON.stringify(labels)}\n`);
+}
+
+function captureCwd(value) {
+  return typeof value === "string"
+    ? value.replace(/(?:\/[A-Za-z0-9_.@%+,:=~-]+)+/g, "<PATH>")
+    : "";
+}
+
+function proximityMs(episode, step, row) {
+  const captured = Date.parse(row?.ts);
+  if (!Number.isFinite(captured)) return Infinity;
+  const stepTime = Date.parse(step?.ts);
+  if (Number.isFinite(stepTime)) return Math.abs(captured - stepTime);
+  const started = Date.parse(episode?.started);
+  const ended = Date.parse(episode?.ended);
+  if (Number.isFinite(started) && Number.isFinite(ended)) {
+    if (captured >= started && captured <= ended) return 0;
+    return Math.min(Math.abs(captured - started), Math.abs(captured - ended));
+  }
+  const only = Number.isFinite(started) ? started : ended;
+  return Number.isFinite(only) ? Math.abs(captured - only) : Infinity;
+}
+
+async function promote(options) {
+  if (!options.inDir) throw new Error("promote requires --in <episodesDir>");
+  const home = process.env.HOME;
+  const captureFile = home ? path.join(home, ".flywheel", "live-capture.jsonl") : "";
+  if (!captureFile || !existsSync(captureFile)) { process.stdout.write("Promoted 0 episodes.\n"); return; }
+  const rows = jsonl(captureFile).filter((row) => row && Number.isInteger(row.exit_code)
+    && typeof row.session_id === "string" && typeof row.cmd_head === "string" && row.cmd_head);
+  const records = loadEpisodes(options.inDir);
+  let promoted = 0;
+  for (const record of records) {
+    const episode = record.episode;
+    if (episode?.outcome?.tier === "gold") continue;
+    const steps = Array.isArray(episode?.steps) ? episode.steps : [];
+    const candidates = [];
+    for (const [stepIndex, step] of steps.entries()) {
+      const head = cmdHead(step);
+      if (!head) continue;
+      for (const [rowIndex, row] of rows.entries()) {
+        if (row.session_id !== String(episode?.session_id ?? "")) continue;
+        if (captureCwd(row.cwd) !== captureCwd(step?.input?.cwd ?? step?.cwd ?? episode?.cwd)) continue;
+        if (row.cmd_head !== head || String(row.tool).toLowerCase() !== String(step?.tool).toLowerCase()) continue;
+        const distance = proximityMs(episode, step, row);
+        if (distance <= 5 * 60_000) candidates.push({ stepIndex, rowIndex, row, distance });
+      }
+    }
+    const matches = candidates.filter((candidate) => {
+      const forStep = candidates.filter((item) => item.stepIndex === candidate.stepIndex).sort((a, b) => a.distance - b.distance);
+      const forRow = candidates.filter((item) => item.rowIndex === candidate.rowIndex).sort((a, b) => a.distance - b.distance);
+      return forStep[0] === candidate && forRow[0] === candidate
+        && (forStep.length === 1 || forStep[1].distance !== candidate.distance)
+        && (forRow.length === 1 || forRow[1].distance !== candidate.distance);
+    });
+    if (!matches.length) continue;
+    for (const match of matches) {
+      const step = steps[match.stepIndex];
+      step.exitCode = match.row.exit_code;
+      step.ok = match.row.ok === true && match.row.exit_code === 0;
+      step.outcomeConfidence = "strong";
+    }
+    const decisive = matches.slice().sort((a, b) => Date.parse(a.row.ts) - Date.parse(b.row.ts)).at(-1);
+    const label = decisive.row.exit_code === 0 && decisive.row.ok === true ? "pass" : "fail";
+    episode.outcome = { label, tier: "strong", confidence: 0.95, method: "live_capture",
+      evidence: [{ step: decisive.stepIndex, why: `live PostToolUse exit code ${decisive.row.exit_code}` }] };
+    promoted += 1;
+  }
+  if (promoted) writeEpisodeRecords(records, options.inDir);
+  process.stdout.write(`Promoted ${promoted} episode${promoted === 1 ? "" : "s"}.\n`);
 }
 
 async function gold(options) {
@@ -753,6 +826,7 @@ else {
     try {
       if (options.command === "harvest") await harvest(options);
       else if (options.command === "label") await label(options);
+      else if (options.command === "promote") await promote(options);
       else if (options.command === "gold") await gold(options);
       else if (options.command === "calibrate") await calibrate(options);
       else if (options.command === "clusters") await clusters(options);
