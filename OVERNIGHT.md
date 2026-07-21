@@ -19,7 +19,7 @@ RULE: `codex exec ... < /dev/null` ALWAYS (open stdin hung 8h once). Verify inde
 - [ ] G5  M5 live-capture: wire truecall handleHookEvent as a PostToolUse hook so new labels are born strong.
 - [ ] G6  Robustness pass: 1000+ file corpus streaming, malformed-line fuzzing, cross-file parentUuid.
 - [x] G7  Honest findings writeup (blog draft) — the KC-6 result, the 4-fix integration story, the atlas.
-- [ ] G8  npm packaging polish + `flywheel --help` completeness + examples/.
+- [x] G8  npm packaging polish + `flywheel --help` completeness + examples/.
 
 ## Log
 

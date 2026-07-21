@@ -1,13 +1,13 @@
 {
   "name": "@avee1234/flywheel",
-  "version": "0.0.0",
-  "description": "Agents that improve from their own production traces. Harvest, label, cluster, propose, gate, measure. Zero dependencies.",
+  "version": "0.1.0",
+  "description": "A zero-dependency CLI for turning agent traces into measured, guarded improvements.",
   "type": "module",
-  "main": "src/index.js",
   "bin": { "flywheel": "bin/flywheel.js" },
-  "files": ["bin", "src", "README.md", "LICENSE"],
+  "files": ["bin", "src", "examples", "README.md", "LICENSE"],
   "engines": { "node": ">=18" },
   "scripts": { "test": "node --test" },
-  "keywords": ["ai","agent","self-improvement","traces","eval","open-format","zero-dependency"],
+  "repository": { "type": "git", "url": "git+https://github.com/abhid1234/flywheel.git" },
+  "keywords": ["ai", "agent", "cli", "self-improvement", "traces", "evaluation", "zero-dependency"],
   "license": "MIT"
 }

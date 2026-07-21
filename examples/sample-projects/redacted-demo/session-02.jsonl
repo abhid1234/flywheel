@@ -1,0 +1,2 @@
+{"uuid":"sample-02-user","type":"user","timestamp":"2026-01-02T00:00:00Z","sessionId":"synthetic-session-02","promptId":"synthetic-prompt-02","cwd":"/redacted/demo","isSidechain":false,"message":{"role":"user","content":"Review the synthetic configuration."}}
+{"uuid":"sample-02-assistant","type":"assistant","timestamp":"2026-01-02T00:00:01Z","sessionId":"synthetic-session-02","promptId":"synthetic-prompt-02","cwd":"/redacted/demo","isSidechain":false,"message":{"role":"assistant","content":"Review complete; no private data was used."}}

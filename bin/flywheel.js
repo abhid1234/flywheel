@@ -25,18 +25,26 @@ import { goldFromMergeStatus } from "../src/label/merge_status.js";
 import { summarizeStability } from "../src/measure/calibrate.js";
 
 function fail(message, code = 1) { process.stderr.write(`flywheel: ${message}\n`); process.exitCode = code; }
-const USAGE = `Usage:
-  flywheel harvest <projectsDir> --out <outDir> [--exclude-sidechains|--include-sidechains] [--limit N] [--max-group-records N] [--quiet]
-  flywheel label --in <episodesDir> --out <episodesDir>
-  flywheel gold --in <episodesDir> --repos <owner/repo,owner/repo> [--out <dir>]
-  flywheel calibrate --witnesses <clusterFileOrDir> [--repeats 20] [--timeout-ms 5000] [--max-witnesses 20] [--max-total-ms 60000] [--include-timeouts]
-  flywheel clusters --in <episodesDir> [--min-size 3] [--top N] [--json]
-  flywheel propose --cluster <signatureOrId> --in <episodesDir> --llm <codex|echo> [--out <file>] [--force-demo]
-  flywheel measure --patch <patchFile> [--apply] [--runner node] [--keep]
-  flywheel report --in <episodesDir> [--out atlas.html] [--open]
-  flywheel loop --in <episodesDir> [--llm codex|echo] [--apply] [--max N] [--dry-run]
-  flywheel status --in <episodesDir>
-`;
+const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+const COMMAND_HELP = {
+  harvest: { description: "Turn project transcripts into normalized episodes.", usage: "harvest <projectsDir> --out <outDir> [--exclude-sidechains|--include-sidechains] [--limit N] [--max-group-records N] [--quiet]", example: "flywheel harvest ~/.claude/projects --out ~/.flywheel" },
+  label: { description: "Label episode outcomes and confidence tiers.", usage: "label --in <episodesDir> --out <episodesDir>", example: "flywheel label --in .flywheel/episodes --out .flywheel/episodes" },
+  clusters: { description: "Group and rank recurring failure signatures.", usage: "clusters --in <episodesDir> [--min-size 3] [--top N] [--json]", example: "flywheel clusters --in .flywheel/episodes --top 10" },
+  propose: { description: "Create a candidate self-patch for a cluster.", usage: "propose --cluster <signatureOrId> --in <episodesDir> --llm <codex|echo> [--out <file>] [--timeout <ms>] [--force-demo]", example: "flywheel propose --cluster cl_demo --in .flywheel/episodes --llm echo" },
+  measure: { description: "Replay a witness to measure a candidate patch.", usage: "measure --patch <patchFile> [--apply] [--runner node] [--keep]", example: "flywheel measure --patch .flywheel/patches/cl_demo.json" },
+  gold: { description: "Enrich outcomes with GitHub merge-status evidence.", usage: "gold --in <episodesDir> --repos <owner/repo,owner/repo> [--out <dir>]", example: "flywheel gold --in .flywheel/episodes --repos owner/repo" },
+  calibrate: { description: "Check replay-witness stability with repeated runs.", usage: "calibrate --witnesses <clusterFileOrDir> [--repeats 20] [--timeout-ms 5000] [--max-witnesses 20] [--max-total-ms 60000] [--include-timeouts]", example: "flywheel calibrate --witnesses .flywheel/clusters.json --repeats 10" },
+  loop: { description: "Plan or run the guarded improvement loop.", usage: "loop --in <episodesDir> [--llm codex|echo] [--apply] [--max N] [--dry-run]", example: "flywheel loop --in .flywheel/episodes --llm echo --dry-run" },
+  status: { description: "Summarize episodes, proposals, and applied patches.", usage: "status --in <episodesDir>", example: "flywheel status --in .flywheel/episodes" },
+  report: { description: "Generate an HTML failure atlas.", usage: "report --in <episodesDir> [--out atlas.html] [--open]", example: "flywheel report --in .flywheel/episodes --out atlas.html" },
+  version: { description: "Print the package name and version.", usage: "version", example: "flywheel version" },
+};
+const USAGE = `Usage: flywheel <command> [options]\n\nCommands:\n${Object.entries(COMMAND_HELP).map(([name, help]) => `  ${name.padEnd(10)} ${help.description} ${help.usage === name ? "" : `(${help.usage})`}`.trimEnd()).join("\n")}\n\n  gate       No standalone command; proposals are gated inside flywheel loop.\n\nRun flywheel <command> --help for command flags and an example.\n`;
+
+function commandHelp(command) {
+  const help = COMMAND_HELP[command];
+  return `Usage: flywheel ${help.usage}\n\n${help.description}\n\nExample:\n  ${help.example}\n`;
+}
 
 function parseHarvest(argv) {
   if (!argv[1]) return null;
@@ -736,6 +744,8 @@ function objectOutcome(value) { return value !== null && typeof value === "objec
 
 const argv = process.argv.slice(2);
 if (argv.length === 1 && ["--help", "-h", "help"].includes(argv[0])) process.stdout.write(USAGE);
+else if (argv.length === 2 && ["--help", "-h"].includes(argv[1]) && COMMAND_HELP[argv[0]]) process.stdout.write(commandHelp(argv[0]));
+else if (argv.length === 1 && argv[0] === "version") process.stdout.write(`${packageJson.name} ${packageJson.version}\n`);
 else {
   const options = parseArgs(argv);
   if (!options) { process.stderr.write(USAGE); fail("unknown subcommand or invalid arguments", 2); }

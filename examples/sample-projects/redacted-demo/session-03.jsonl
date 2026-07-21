@@ -1,0 +1,2 @@
+{"uuid":"sample-03-user","type":"user","timestamp":"2026-01-03T00:00:00Z","sessionId":"synthetic-session-03","promptId":"synthetic-prompt-03","cwd":"/redacted/demo","isSidechain":false,"message":{"role":"user","content":"Summarize the synthetic run."}}
+{"uuid":"sample-03-assistant","type":"assistant","timestamp":"2026-01-03T00:00:01Z","sessionId":"synthetic-session-03","promptId":"synthetic-prompt-03","cwd":"/redacted/demo","isSidechain":false,"message":{"role":"assistant","content":"Synthetic run summarized."}}

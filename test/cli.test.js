@@ -38,6 +38,43 @@ function runCli(args, cwd) {
   return spawnSync(process.execPath, [cli, ...args], { cwd, encoding: "utf8", timeout: 5000 });
 }
 
+test("CLI --help exits zero and lists every workflow command", () => {
+  const result = runCli(["--help"]);
+  assert.equal(result.status, 0, result.stderr);
+  for (const command of ["harvest", "label", "clusters", "propose", "gate", "measure", "gold", "calibrate", "loop", "status", "report"]) {
+    assert.match(result.stdout, new RegExp(`\\b${command}\\b`));
+  }
+});
+
+test("CLI provides help with an example for every executable subcommand", () => {
+  for (const command of ["harvest", "label", "clusters", "propose", "measure", "gold", "calibrate", "loop", "status", "report", "version"]) {
+    const result = runCli([command, "--help"]);
+    assert.equal(result.status, 0, `${command}: ${result.stderr}`);
+    assert.match(result.stdout, /^Usage:/);
+    assert.match(result.stdout, /Example:\n  flywheel /);
+  }
+});
+
+test("CLI version reads package name and version", () => {
+  const result = runCli(["version"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, "@avee1234/flywheel 0.1.0\n");
+});
+
+test("CLI unknown command prints usage and exits two", () => {
+  const result = runCli(["not-a-command"]);
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /^Usage: flywheel/);
+  assert.match(result.stderr, /unknown subcommand or invalid arguments/);
+});
+
+test("quickstart runs end-to-end with bundled synthetic transcripts", () => {
+  const script = new URL("../examples/quickstart.sh", import.meta.url).pathname;
+  const result = spawnSync("bash", [script], { encoding: "utf8", timeout: 15000 });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Quickstart complete/);
+});
+
 test("CLI deduplicates session and prompt pairs, keeping the longer shell", () => {
   const short = [record("s", "p", "a", "2026-01-01T00:00:00Z"), { ...record("s", "p", "b", "2026-01-01T00:00:01Z"), type: "assistant", message: { role: "assistant", content: "done" } }];
   const long = [...short, { ...record("s", "p", "c", "2026-01-01T00:00:02Z"), type: "assistant", message: { role: "assistant", content: "more" } }];

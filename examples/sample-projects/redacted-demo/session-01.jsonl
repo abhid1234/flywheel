@@ -1,0 +1,2 @@
+{"uuid":"sample-01-user","type":"user","timestamp":"2026-01-01T00:00:00Z","sessionId":"synthetic-session-01","promptId":"synthetic-prompt-01","cwd":"/redacted/demo","isSidechain":false,"message":{"role":"user","content":"Run the synthetic checks."}}
+{"uuid":"sample-01-assistant","type":"assistant","timestamp":"2026-01-01T00:00:01Z","sessionId":"synthetic-session-01","promptId":"synthetic-prompt-01","cwd":"/redacted/demo","isSidechain":false,"message":{"role":"assistant","content":"The check needs attention."}}
