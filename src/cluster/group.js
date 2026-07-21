@@ -106,6 +106,13 @@ function makeCluster(episodes, signatures, episodesTotal, isLongTail = false) {
     return Array.isArray(recovered) && recovered.some((item) => mergedSignatures.includes(item));
   }).length;
   const size = ordered.length;
+  const cwdCounts = new Map();
+  for (const episode of ordered) {
+    const cwd = text(episode?.cwd);
+    if (cwd) cwdCounts.set(cwd, (cwdCounts.get(cwd) ?? 0) + 1);
+  }
+  const dominantCwd = [...cwdCounts]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] ?? null;
   const recurrenceRate = episodesTotal > 0 ? Math.round((size / episodesTotal) * 10000) / 10000 : 0;
   return {
     id: isLongTail ? "cl_longtail" : contentId("cl", { signature, members }),
@@ -116,6 +123,7 @@ function makeCluster(episodes, signatures, episodesTotal, isLongTail = false) {
     errorClass: isLongTail ? "mixed" : parts.errorClass,
     mode: isLongTail ? "mixed" : parts.errorClass,
     members,
+    dominantCwd,
     size,
     tierCounts,
     span: { first: dates[0] ?? null, last: dates.at(-1) ?? null, sessions: sessions.size, projects: projects.size },

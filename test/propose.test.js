@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { routeCluster, LAYER_STATUS } from "../src/propose/targets.js";
+import { resolveTargetPath, routeCluster, LAYER_STATUS } from "../src/propose/targets.js";
 import { buildBrief } from "../src/propose/brief.js";
 import { renderPrompt } from "../src/propose/prompt.js";
 import { parseProposal } from "../src/propose/parse.js";
@@ -20,12 +20,31 @@ const fenced = (value) => `\`\`\`json\n${JSON.stringify(value)}\n\`\`\``;
 const brief = (text = "old line") => ({ layer: "context", target: "CLAUDE.md", targetCurrentText: text, constraints: { maxLinesChanged: 20 } });
 
 test("routeCluster maps every error class and makes weights unconstructible", () => {
-  for (const errorClass of ["module_not_found", "command_not_found", "file_not_found", "harness_blocked"]) assert.equal(routeCluster({ errorClass }).layer, "context");
-  for (const errorClass of ["edit_no_match", "test_failure", "harness_precondition", "git_conflict", "runtime_error", "shell_syntax", "usage_error"]) assert.equal(routeCluster({ errorClass }).layer, "skill");
-  for (const errorClass of ["permission", "timeout", "network"]) assert.deepEqual(routeCluster({ errorClass }), { layer: "scaffolding", surfaces: ["scaffolding"], requires: "human-gate" });
+  for (const errorClass of ["module_not_found", "command_not_found", "file_not_found"]) assert.equal(routeCluster({ errorClass }).layer, "context");
+  assert.deepEqual(routeCluster({ errorClass: "harness_blocked" }), { layer: "context", surfaces: ["CLAUDE.md"], requires: "human-gate" });
+  for (const errorClass of ["edit_no_match", "test_failure", "git_conflict", "runtime_error", "shell_syntax", "usage_error"]) assert.equal(routeCluster({ errorClass }).layer, "skill");
+  assert.deepEqual(routeCluster({ errorClass: "harness_precondition" }), { layer: "scaffolding", surfaces: [".claude/settings.json"], requires: "human-gate" });
+  for (const errorClass of ["permission", "timeout", "network"]) assert.deepEqual(routeCluster({ errorClass }), { layer: "scaffolding", surfaces: [".claude/settings.json"], requires: "human-gate" });
   for (const errorClass of ["user_rejected", "tool_unavailable", "stale_reference"]) assert.throws(() => routeCluster({ errorClass }));
   assert.throws(() => routeCluster({ layer: "weights", errorClass: "other" }));
   assert.equal(LAYER_STATUS.weights, "unavailable");
+});
+
+test("proposal surfaces resolve from the failure cwd or Claude home", () => {
+  assert.equal(resolveTargetPath({ dominantCwd: "/proj" }, "CLAUDE.md", { homeDir: "/home/me" }), "/proj/CLAUDE.md");
+  assert.equal(resolveTargetPath({}, "CLAUDE.md", { homeDir: "/home/me" }), "/home/me/.claude/CLAUDE.md");
+  assert.equal(resolveTargetPath({ dominantCwd: "/proj" }, ".claude/settings.json", { homeDir: "/home/me" }), "/proj/.claude/settings.json");
+  assert.equal(routeCluster({ errorClass: "test_failure" }).surfaces[0], ".claude/skills/general/SKILL.md");
+});
+
+test("harness-blocked context proposals are valid but human-gated without a witness", () => {
+  const cluster = { id: "cl_blocked", errorClass: "harness_blocked", size: 3, tierCounts: { gold: 3 }, witnesses: [] };
+  const contract = buildEvalContract(cluster, candidate());
+  const patch = toSelfPatch(candidate({ layer: "context", target: "CLAUDE.md" }), contract, cluster);
+  assert.equal(routeCluster(cluster).layer, "context");
+  assert.equal(contract.strength, "behavioral");
+  assert.equal(patch.requires, "human-gate");
+  assert.equal(patch.meta.eval_strength, "behavioral");
 });
 
 test("brief caps text and exemplars and redacts outbound strings", () => {
@@ -49,6 +68,12 @@ test("prompt rendering is deterministic and assigns only fix authorship", () => 
 
 test("strict proposal parsing accepts a valid unique-anchor edit", () => {
   assert.deepEqual(parseProposal(fenced(candidate()), brief()), { ok: true, candidate: candidate() });
+});
+
+test("proposal parsing permits an empty anchor only for a new file", () => {
+  const proposed = candidate({ edit: { before: "", after: "new guidance" } });
+  assert.equal(parseProposal(fenced(proposed), { ...brief(""), meta: { creates_file: true } }).ok, true);
+  assert.equal(parseProposal(fenced(proposed), brief("")).ok, false);
 });
 
 test("proposal parsing distinguishes anchor failures and rejects retargeting", () => {

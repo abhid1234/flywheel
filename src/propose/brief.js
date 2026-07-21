@@ -58,5 +58,10 @@ export function buildBrief(cluster, episodes, targetText, opts = {}) {
     },
     witness: (Array.isArray(cluster?.witnesses) ? cluster.witnesses : []).find((item) => item?.replayable === true) ?? null,
   };
-  return redact(brief);
+  const redacted = redact(brief);
+  // The target is operational data, not prompt evidence: it must remain exact
+  // so the resulting patch points at the file selected by the caller.
+  redacted.target = brief.target;
+  if (opts?.createsFile === true) redacted.meta = { creates_file: true };
+  return redacted;
 }

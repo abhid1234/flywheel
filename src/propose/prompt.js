@@ -7,7 +7,9 @@ export function renderPrompt(brief) {
     "```json",
     '{"summary":"...","layer":"...","target":"...","edit":{"before":"...","after":"..."},"rationale":"...","expectedEffect":"..."}',
     "```",
-    "Copy layer and target exactly. The before text must be one unique verbatim excerpt of targetCurrentText.",
+    brief?.meta?.creates_file === true
+      ? "Copy layer and target exactly. This creates a new file, so edit.before must be an empty string."
+      : "Copy layer and target exactly. The before text must be one unique verbatim excerpt of targetCurrentText.",
     "Do not add any fields beyond the displayed shape.",
     "Proposal brief:",
     serialized ?? "null",

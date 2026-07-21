@@ -218,8 +218,9 @@ function proposalFixture(proposable = true) {
   const episodesDir = path.join(root, "episodes");
   mkdirSync(episodesDir);
   writeFileSync(path.join(episodesDir, "demo.jsonl"), `${JSON.stringify({ id: "ep_1", project: "demo" })}\n`);
-  writeFileSync(path.join(root, "SKILL.md"), "Unique heading\nExisting guidance.\n");
-  const cluster = { id: "cl_demo", signature: "Bash:test_failure:npm test", errorClass: "test_failure", mode: "test_failure", members: ["ep_1"], size: proposable ? 3 : 1, tierCounts: { gold: 0, strong: proposable ? 3 : 1, weak: 0, unknown: 0 }, cost: { terminal: 1 }, recurrenceRate: { episodesWithSignature: 1, episodesTotal: 1, rate: 1 }, witnesses: proposable ? [{ replayable: true, kind: "shell", cmd: "node --test", cwd: root, observedExitCode: 1 }] : [], created: null };
+  mkdirSync(path.join(root, ".claude", "skills", "general"), { recursive: true });
+  writeFileSync(path.join(root, ".claude", "skills", "general", "SKILL.md"), "Unique heading\nExisting guidance.\n");
+  const cluster = { id: "cl_demo", signature: "Bash:test_failure:npm test", errorClass: "test_failure", mode: "test_failure", dominantCwd: root, members: ["ep_1"], size: proposable ? 3 : 1, tierCounts: { gold: 0, strong: proposable ? 3 : 1, weak: 0, unknown: 0 }, cost: { terminal: 1 }, recurrenceRate: { episodesWithSignature: 1, episodesTotal: 1, rate: 1 }, witnesses: proposable ? [{ replayable: true, kind: "shell", cmd: "node --test", cwd: root, observedExitCode: 1 }] : [], created: null };
   writeFileSync(path.join(root, "clusters.json"), `${JSON.stringify([cluster])}\n`);
   return { root, episodesDir };
 }
@@ -233,6 +234,35 @@ test("CLI propose echo writes a witness-replay self-patch", () => {
   assert.equal(patch.diff.format, "before_after");
   assert.equal(patch.diff.before, "Unique heading");
   assert.equal(patch.meta.flywheel.evalStrategy, "witness_replay");
+});
+
+test("CLI propose creates a human-gated new-file patch for a missing context target", () => {
+  const { root, episodesDir } = proposalFixture(true);
+  const clustersFile = path.join(root, "clusters.json");
+  const [cluster] = JSON.parse(readFileSync(clustersFile, "utf8"));
+  cluster.errorClass = "file_not_found";
+  writeFileSync(clustersFile, `${JSON.stringify([cluster])}\n`);
+  const out = path.join(root, "context-patch.json");
+  const result = runCli(["propose", "--cluster", "cl_demo", "--in", episodesDir, "--llm", "echo", "--out", out], root);
+  assert.equal(result.status, 0, result.stderr);
+  const patch = JSON.parse(readFileSync(out, "utf8"));
+  assert.equal(patch.target, path.join(root, "CLAUDE.md"));
+  assert.equal(patch.diff.before, "");
+  assert.equal(patch.meta.creates_file, true);
+  assert.equal(patch.requires, "human-gate");
+});
+
+test("CLI propose respects an explicit target override and keeps verbatim anchors", () => {
+  const { root, episodesDir } = proposalFixture(true);
+  const target = path.join(root, "override.md");
+  writeFileSync(target, "Override heading\n");
+  const out = path.join(root, "override-patch.json");
+  const result = runCli(["propose", "--cluster", "cl_demo", "--in", episodesDir, "--llm", "echo", "--target", target, "--out", out], root);
+  assert.equal(result.status, 0, result.stderr);
+  const patch = JSON.parse(readFileSync(out, "utf8"));
+  assert.equal(patch.target, target);
+  assert.equal(patch.diff.before, "Override heading");
+  assert.equal(patch.meta.creates_file, undefined);
 });
 
 test("CLI propose explains a non-proposable cluster", () => {

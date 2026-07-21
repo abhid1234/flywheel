@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { clusterKey, signatureParts } from "../src/cluster/key.js";
 import { clusterEpisodes } from "../src/cluster/group.js";
-import { isProposable, rankClusters } from "../src/cluster/rank.js";
+import { isProposable, isReviewable, rankClusters } from "../src/cluster/rank.js";
 
 function episode(id, signature, errorText, extra = {}) {
   return {
@@ -34,6 +34,14 @@ test("exact signatures form one pure cluster", () => {
   assert.equal(clusters.length, 1);
   assert.equal(clusters[0].size, 3);
   assert.equal(clusters[0].created, null);
+});
+
+test("clusters record the most common episode cwd with lexical tie-breaking", () => {
+  const signature = "bash:test_failure:npm test:cwd";
+  const input = ["/a", "/a", "/a", "/b"].map((cwd, index) => ({ ...episode(`ep_${index + 1}`, signature, "failed"), cwd }));
+  assert.equal(clusterEpisodes(input)[0].dominantCwd, "/a");
+  const tied = ["/b", "/a"].map((cwd, index) => ({ ...episode(`ep_${index + 1}`, signature, "failed"), cwd }));
+  assert.equal(clusterEpisodes(tied, { minSize: 1 })[0].dominantCwd, "/a");
 });
 
 test("near-identical errors merge within a tool and error class", () => {
@@ -105,4 +113,19 @@ test("unknown-tier clusters cannot be proposed even when large and replayable", 
     isLongTail: false,
   };
   assert.equal(isProposable(cluster), false);
+});
+
+test("a recurring trusted cluster without a witness is reviewable but not proposable", () => {
+  const cluster = { size: 3, tierCounts: { gold: 3 }, witnesses: [] };
+  assert.equal(isReviewable(cluster), true);
+  assert.equal(isProposable(cluster), false);
+});
+
+test("small and long-tail clusters are neither reviewable nor proposable", () => {
+  const small = { size: 2, tierCounts: { gold: 2 }, witnesses: [{ replayable: true }] };
+  const tail = { size: 3, tierCounts: { gold: 3 }, witnesses: [{ replayable: true }], isLongTail: true };
+  for (const cluster of [small, tail]) {
+    assert.equal(isReviewable(cluster), false);
+    assert.equal(isProposable(cluster), false);
+  }
 });

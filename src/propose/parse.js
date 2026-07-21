@@ -47,9 +47,12 @@ export function parseProposal(llmText, brief) {
       if (typeof candidate[key] !== "string" || !candidate[key]) add(errors, key, "required", `${key} must be a non-empty string`);
     }
     if (!object(candidate.edit)) add(errors, "edit", "required", "edit must be an object");
-    for (const key of ["before", "after"]) {
-      if (!object(candidate.edit) || typeof candidate.edit[key] !== "string" || !candidate.edit[key]) add(errors, `edit.${key}`, "required", `edit.${key} must be a non-empty string`);
+    const createsFile = brief?.meta?.creates_file === true;
+    if (!object(candidate.edit) || typeof candidate.edit?.before !== "string" || (!createsFile && !candidate.edit.before)) {
+      add(errors, "edit.before", "required", `edit.before must be ${createsFile ? "a string" : "a non-empty string"}`);
     }
+    if (!object(candidate.edit) || typeof candidate.edit?.after !== "string" || !candidate.edit.after) add(errors, "edit.after", "required", "edit.after must be a non-empty string");
+    if (createsFile && candidate.edit?.before !== "") add(errors, "edit.before", "new_file_anchor", "before must be empty when creating a file");
     if (hasCriterion(candidate)) add(errors, "", "criterion_supplied", "candidate must not supply a success criterion");
     if (candidate.layer !== brief?.layer) add(errors, "layer", "mismatch", "layer must match the brief");
     if (candidate.target !== brief?.target) add(errors, "target", "mismatch", "target must match the brief");

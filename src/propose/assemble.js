@@ -36,7 +36,7 @@ export function toSelfPatch(candidate, contractResult, cluster, meta = {}) {
     rationale: candidate?.rationale ?? "",
     eval_contract: contractResult?.evalContract,
     blast_radius: { surfaces: [...route.surfaces], files_changed: before === after ? 0 : 1, lines_changed: changedLines(before, after) },
-    requires: strictest(route.requires, contractResult?.requires),
-    meta: { ...meta, flywheel },
+    requires: meta?.creates_file === true ? "human-gate" : strictest(route.requires, contractResult?.requires),
+    meta: { ...meta, eval_strength: contractResult?.strength ?? "", flywheel },
   };
 }

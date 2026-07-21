@@ -30,14 +30,25 @@ export function rankClusters(clusters, weights = {}) {
   }
 }
 
-// Ranking is descriptive. Callers must pass this guard before proposing a patch.
-export function isProposable(cluster) {
+// Reviewable clusters have enough recurring, trustworthy evidence for a human
+// to consider a patch. They do not need a replayable causal witness.
+export function isReviewable(cluster) {
   try {
     const counts = cluster?.tierCounts ?? {};
     return finite(cluster?.size) >= 3
       && finite(counts.gold) + finite(counts.strong) >= 3
-      && Array.isArray(cluster?.witnesses) && cluster.witnesses.some((witness) => witness?.replayable === true)
       && cluster?.isLongTail !== true;
+  } catch {
+    return false;
+  }
+}
+
+// Proposable ⊂ reviewable: only this stricter gate is auto-apply eligible.
+export function isProposable(cluster) {
+  try {
+    return isReviewable(cluster)
+      && Array.isArray(cluster?.witnesses)
+      && cluster.witnesses.some((witness) => witness?.replayable === true);
   } catch {
     return false;
   }

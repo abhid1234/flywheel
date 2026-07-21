@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { appendFileSync, createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import process from "node:process";
+import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import { spawn } from "node:child_process";
@@ -15,7 +16,7 @@ import { renderPrompt } from "../src/propose/prompt.js";
 import { parseProposal } from "../src/propose/parse.js";
 import { buildEvalContract } from "../src/propose/contract.js";
 import { toSelfPatch } from "../src/propose/assemble.js";
-import { routeCluster } from "../src/propose/targets.js";
+import { resolveTargetPath, routeCluster } from "../src/propose/targets.js";
 import { buildAtlas, renderAtlasHtml } from "../src/report/atlas.js";
 import { planLoop } from "../src/loop/orchestrate.js";
 import { buildAttestation } from "../src/loop/attest.js";
@@ -32,11 +33,11 @@ const COMMAND_HELP = {
   label: { description: "Label episode outcomes and confidence tiers.", usage: "label --in <episodesDir> --out <episodesDir>", example: "flywheel label --in .flywheel/episodes --out .flywheel/episodes" },
   promote: { description: "Promote episode outcomes using live hook captures.", usage: "promote --in <episodesDir>", example: "flywheel promote --in .flywheel/episodes" },
   clusters: { description: "Group and rank recurring failure signatures.", usage: "clusters --in <episodesDir> [--min-size 3] [--top N] [--json]", example: "flywheel clusters --in .flywheel/episodes --top 10" },
-  propose: { description: "Create a candidate self-patch for a cluster.", usage: "propose --cluster <signatureOrId> --in <episodesDir> --llm <codex|echo> [--out <file>] [--timeout <ms>] [--force-demo]", example: "flywheel propose --cluster cl_demo --in .flywheel/episodes --llm echo" },
+  propose: { description: "Create a candidate self-patch for a cluster.", usage: "propose --cluster <signatureOrId> --in <episodesDir> --llm <codex|echo> [--target <path>] [--out <file>] [--timeout <ms>] [--force-demo]", example: "flywheel propose --cluster cl_demo --in .flywheel/episodes --llm echo" },
   measure: { description: "Replay a witness to measure a candidate patch.", usage: "measure --patch <patchFile> [--apply] [--runner node] [--keep]", example: "flywheel measure --patch .flywheel/patches/cl_demo.json" },
   gold: { description: "Enrich outcomes with GitHub merge-status evidence.", usage: "gold --in <episodesDir> --repos <owner/repo,owner/repo> [--out <dir>]", example: "flywheel gold --in .flywheel/episodes --repos owner/repo" },
   calibrate: { description: "Check replay-witness stability with repeated runs.", usage: "calibrate --witnesses <clusterFileOrDir> [--repeats 20] [--timeout-ms 5000] [--max-witnesses 20] [--max-total-ms 60000] [--include-timeouts]", example: "flywheel calibrate --witnesses .flywheel/clusters.json --repeats 10" },
-  loop: { description: "Plan or run the guarded improvement loop.", usage: "loop --in <episodesDir> [--llm codex|echo] [--apply] [--max N] [--dry-run]", example: "flywheel loop --in .flywheel/episodes --llm echo --dry-run" },
+  loop: { description: "Plan or run the guarded improvement loop.", usage: "loop --in <episodesDir> [--llm codex|echo] [--mode auto|review|--human-review] [--target <path>] [--apply] [--max N] [--dry-run]", example: "flywheel loop --in .flywheel/episodes --llm echo --mode review" },
   status: { description: "Summarize episodes, proposals, and applied patches.", usage: "status --in <episodesDir>", example: "flywheel status --in .flywheel/episodes" },
   report: { description: "Generate an HTML failure atlas.", usage: "report --in <episodesDir> [--out atlas.html] [--open]", example: "flywheel report --in .flywheel/episodes --out atlas.html" },
   version: { description: "Print the package name and version.", usage: "version", example: "flywheel version" },
@@ -84,10 +85,10 @@ function parseArgs(argv) {
   if (argv[0] === "gold") return parseFlags(argv, new Map([["--in", "inDir"], ["--repos", "repos"], ["--out", "outDir"]]), new Map());
   if (argv[0] === "calibrate") return parseFlags(argv, new Map([["--witnesses", "witnesses"], ["--repeats", "repeats"], ["--timeout-ms", "timeoutMs"], ["--max-witnesses", "maxWitnesses"], ["--max-total-ms", "maxTotalMs"]]), new Map([["--include-timeouts", "includeTimeouts"]]));
   if (argv[0] === "clusters") return parseFlags(argv, new Map([["--in", "inDir"], ["--min-size", "minSize"], ["--top", "top"]]), new Map([["--json", "json"]]));
-  if (argv[0] === "propose") return parseFlags(argv, new Map([["--cluster", "cluster"], ["--in", "inDir"], ["--llm", "llm"], ["--out", "outFile"], ["--timeout", "timeout"]]), new Map([["--force-demo", "forceDemo"]]));
+  if (argv[0] === "propose") return parseFlags(argv, new Map([["--cluster", "cluster"], ["--in", "inDir"], ["--llm", "llm"], ["--target", "target"], ["--out", "outFile"], ["--timeout", "timeout"]]), new Map([["--force-demo", "forceDemo"]]));
   if (argv[0] === "measure") return parseFlags(argv, new Map([["--patch", "patchFile"], ["--runner", "runner"]]), new Map([["--apply", "apply"], ["--keep", "keep"]]));
   if (argv[0] === "report") return parseFlags(argv, new Map([["--in", "inDir"], ["--out", "outFile"]]), new Map([["--open", "open"]]));
-  if (argv[0] === "loop") return parseFlags(argv, new Map([["--in", "inDir"], ["--llm", "llm"], ["--max", "max"]]), new Map([["--apply", "apply"], ["--dry-run", "dryRun"]]));
+  if (argv[0] === "loop") return parseFlags(argv, new Map([["--in", "inDir"], ["--llm", "llm"], ["--max", "max"], ["--mode", "mode"], ["--target", "target"]]), new Map([["--apply", "apply"], ["--dry-run", "dryRun"], ["--human-review", "humanReview"]]));
   if (argv[0] === "status") return parseFlags(argv, new Map([["--in", "inDir"]]), new Map());
   return null;
 }
@@ -498,16 +499,18 @@ async function propose(options) {
   const cluster = allClusters.find((item) => item?.id === options.cluster || item?.signature === options.cluster);
   if (!cluster) throw new Error(`cluster not found: ${options.cluster}`);
   if (!isProposable(cluster) && !options.forceDemo) throw new Error(`cluster is not proposable: ${nonProposableReason(cluster)}`);
-  const target = routeCluster(cluster).surfaces[0];
-  const targetFile = path.resolve(target);
-  if (!existsSync(targetFile) || !statSync(targetFile).isFile()) throw new Error(`proposal target does not exist: ${target}`);
-  const brief = buildBrief(cluster, episodes, readFileSync(targetFile, "utf8"));
+  const route = routeCluster(cluster);
+  const targetFile = options.target
+    ? path.resolve(options.target)
+    : resolveTargetPath(cluster, route.surfaces[0], { homeDir: os.homedir() });
+  const exists = existsSync(targetFile) && statSync(targetFile).isFile();
+  if (!exists && route.layer === "scaffolding") throw new Error(`scaffolding settings file is missing: ${targetFile}`);
+  const createsFile = !exists;
+  const brief = buildBrief(cluster, episodes, exists ? readFileSync(targetFile, "utf8") : "", { target: targetFile, createsFile });
   const prompt = renderPrompt(brief);
   let llmText;
   if (options.llm === "echo") {
-    const anchor = brief.targetCurrentText.split(/\r?\n/)[0];
-    if (!anchor) throw new Error(`proposal target is empty: ${brief.target}`);
-    llmText = `\`\`\`json\n${JSON.stringify({ summary: "Add deterministic flywheel guidance", layer: brief.layer, target: brief.target, edit: { before: anchor, after: `${anchor}\nFlywheel note: replay the recorded witness before completing this task.` }, rationale: "Address the recurring witnessed failure.", expectedEffect: "The failure is prevented on replay." })}\n\`\`\``;
+    llmText = `\`\`\`json\n${JSON.stringify(echoProposal(brief))}\n\`\`\``;
   } else {
     const timeout = options.timeout === undefined ? 180000 : Number(options.timeout) * 1000;
     if (!Number.isFinite(timeout) || timeout <= 0) throw new Error("--timeout must be a positive number of seconds");
@@ -524,7 +527,7 @@ async function propose(options) {
     mkdirSync(trialsDir, { recursive: true });
     writeFileSync(path.join(trialsDir, `${cluster.id}.mjs`), contract.trialScript);
   }
-  const patch = { ...toSelfPatch(parsed.candidate, contract, cluster), created: new Date().toISOString() };
+  const patch = { ...toSelfPatch(parsed.candidate, contract, cluster, createsFile ? { creates_file: true } : {}), created: new Date().toISOString() };
   const outFile = path.resolve(options.outFile ?? path.join(parent, "patches", `${cluster.id}.json`));
   mkdirSync(path.dirname(outFile), { recursive: true });
   writeFileSync(outFile, `${JSON.stringify(patch, null, 2)}\n`);
@@ -617,6 +620,11 @@ function jsonl(file) {
 }
 
 function echoProposal(brief) {
+  if (brief?.meta?.creates_file === true) {
+    return { summary: "Add deterministic flywheel guidance", layer: brief.layer, target: brief.target,
+      edit: { before: "", after: "Flywheel note: replay the recorded witness before completing this task.\n" },
+      rationale: "Address the recurring witnessed failure.", expectedEffect: "The failure is prevented on replay." };
+  }
   const anchor = brief.targetCurrentText.split(/\r?\n/)[0];
   if (!anchor) throw new Error(`proposal target is empty: ${brief.target}`);
   return { summary: "Add deterministic flywheel guidance", layer: brief.layer, target: brief.target,
@@ -624,11 +632,15 @@ function echoProposal(brief) {
     rationale: "Address the recurring witnessed failure.", expectedEffect: "The failure is prevented on replay." };
 }
 
-async function makeLoopPatch(cluster, episodes, llm) {
-  const target = routeCluster(cluster).surfaces[0];
-  const targetFile = path.resolve(target);
-  if (!existsSync(targetFile) || !statSync(targetFile).isFile()) throw new Error(`proposal target does not exist: ${target}`);
-  const brief = buildBrief(cluster, episodes, readFileSync(targetFile, "utf8"));
+async function makeLoopPatch(cluster, episodes, llm, targetOverride) {
+  const route = routeCluster(cluster);
+  const targetFile = targetOverride
+    ? path.resolve(targetOverride)
+    : resolveTargetPath(cluster, route.surfaces[0], { homeDir: os.homedir() });
+  const exists = existsSync(targetFile) && statSync(targetFile).isFile();
+  if (!exists && route.layer === "scaffolding") throw new Error(`scaffolding settings file is missing: ${targetFile}`);
+  const createsFile = !exists;
+  const brief = buildBrief(cluster, episodes, exists ? readFileSync(targetFile, "utf8") : "", { target: targetFile, createsFile });
   let llmText;
   if (llm === "echo") llmText = `\`\`\`json\n${JSON.stringify(echoProposal(brief))}\n\`\`\``;
   else {
@@ -639,7 +651,7 @@ async function makeLoopPatch(cluster, episodes, llm) {
   const parsed = parseProposal(llmText, brief);
   if (!parsed.ok) throw new Error(`proposal validation failed: ${parsed.errors.map((error) => error.message).join("; ")}`);
   const contract = buildEvalContract(cluster, parsed.candidate);
-  return { patch: { ...toSelfPatch(parsed.candidate, contract, cluster), created: new Date().toISOString() }, contract };
+  return { patch: { ...toSelfPatch(parsed.candidate, contract, cluster, createsFile ? { creates_file: true } : {}), created: new Date().toISOString() }, contract };
 }
 
 let selfpatchModule;
@@ -721,6 +733,8 @@ function summaryRow(signature, gate, measureResult, result, reason = "") {
 
 async function loop(options) {
   if (!options.inDir) throw new Error("loop requires --in <episodesDir>");
+  const mode = options.humanReview ? "review" : (options.mode ?? "auto");
+  if (!["auto", "review"].includes(mode)) throw new Error("--mode must be auto or review");
   const llm = options.llm ?? "codex";
   if (!["codex", "echo"].includes(llm)) throw new Error("--llm must be codex or echo");
   const max = options.max === undefined ? Infinity : Number(options.max);
@@ -728,7 +742,7 @@ async function loop(options) {
   const records = labelInMemory(loadEpisodes(options.inDir));
   const episodes = records.map((item) => item.episode);
   let ranked = rankClusters(clusterEpisodes(episodes, { minSize: 3 }));
-  let plan = planLoop(ranked, { ranked: true, max });
+  let plan = planLoop(ranked, { ranked: true, max, mode });
   // A precomputed synthetic cluster is useful for mechanism demos where the
   // raw corpus was deliberately minimized. Prefer freshly derived data unless
   // it yields no actionable cluster.
@@ -736,14 +750,20 @@ async function loop(options) {
   if (plan.actions.length === 0 && existsSync(priorClusters)) {
     const saved = readJson(priorClusters, "clusters file");
     if (Array.isArray(saved) && saved.length) {
-      const savedPlan = planLoop(saved, { max });
+      const savedPlan = planLoop(saved, { max, mode });
       if (savedPlan.actions.length > 0) { ranked = rankClusters(saved); plan = savedPlan; }
     }
   }
-  process.stdout.write("cluster\tgate\tmeasure\tresult\treason\n");
-  for (const item of plan.skipped) summaryRow(item.cluster_signature, "-", null, "skipped", item.reason);
+  process.stdout.write(mode === "review" ? "cluster\tlayer\tgate\teval-strength\tqueued-for-review\n" : "cluster\tgate\tmeasure\tresult\treason\n");
+  for (const item of plan.skipped) {
+    if (mode === "review") process.stdout.write(`${item.cluster_signature}\t${item.layer ?? "-"}\tskipped\t-\tno (${item.reason})\n`);
+    else summaryRow(item.cluster_signature, "-", null, "skipped", item.reason);
+  }
   if (options.dryRun) {
-    for (const action of plan.actions) summaryRow(action.cluster_signature, "planned", null, "queued", "dry-run");
+    for (const action of plan.actions) {
+      if (mode === "review") process.stdout.write(`${action.cluster_signature}\t${action.layer}\tplanned\t-\t${action.disposition === "human-review" ? "yes" : "no"}\n`);
+      else summaryRow(action.cluster_signature, "planned", null, "queued", "dry-run");
+    }
     process.stdout.write(`Plan: ${plan.actions.length} action(s), ${plan.skipped.length} skipped; dry-run changed nothing.\n`);
     return;
   }
@@ -762,7 +782,17 @@ async function loop(options) {
       continue;
     }
     try {
-      const { patch, contract } = await makeLoopPatch(action.cluster, episodes, llm);
+      const { patch, contract } = await makeLoopPatch(action.cluster, episodes, llm, options.target);
+      if (action.disposition === "human-review") {
+        const gated = await gatePatch(patch);
+        const reviewDir = path.join(parent, "review-queue");
+        mkdirSync(reviewDir, { recursive: true });
+        writeFileSync(path.join(reviewDir, `${action.cluster.id}.json`), `${JSON.stringify(patch, null, 2)}\n`);
+        process.stdout.write(`${action.cluster_signature}\t${action.layer}\t${gated.decision}\t${contract.strength}\tyes\n`);
+        decisions.push({ item: { ...action, eval_strategy: contract.strategy }, gate: gated.decision,
+          reason: gated.reason, measure: null, applied: false, evalStrength: contract.strength });
+        continue;
+      }
       const patchesDir = path.join(parent, "patches");
       const trialsDir = path.join(parent, "trials");
       mkdirSync(patchesDir, { recursive: true });
@@ -790,6 +820,7 @@ async function loop(options) {
   for (const decision of decisions) {
     const record = await linkedDecision({ ts: new Date().toISOString(), cluster_signature: decision.item.cluster_signature,
       layer: decision.item.layer, gate_decision: decision.gate, eval_strategy: decision.item.eval_strategy ?? null,
+      disposition: decision.item.disposition ?? "auto-eligible", ...(decision.evalStrength ? { eval_strength: decision.evalStrength } : {}),
       measure: decision.measure ?? { before: null, after: null, helped: false, regressed: false }, applied: decision.applied,
       ...(decision.attestationId ? { attestation_id: decision.attestationId } : {}), ...(decision.reason ? { reason: decision.reason } : {}) }, entries);
     appendFileSync(ledgerFile, `${JSON.stringify(record)}\n`);
@@ -810,7 +841,9 @@ async function status(options) {
   const parent = path.dirname(path.resolve(options.inDir));
   const clusterData = existsSync(path.join(parent, "clusters.json")) ? readJson(path.join(parent, "clusters.json"), "clusters file") : [];
   const ledger = jsonl(path.join(parent, "ledger.jsonl"));
-  process.stdout.write(`episodes: ${episodes.length}\nfailures: ${failures}\ntiers: ${JSON.stringify(tiers)}\nproposable clusters: ${clusterData.filter(isProposable).length}\npatches applied: ${ledger.filter((entry) => entry.applied === true).length}\nqueued: ${ledger.filter((entry) => entry.applied === false && entry.gate_decision !== "skipped" && entry.reason !== "already_applied").length}\nlast run: ${ledger.at(-1)?.ts ?? "never"}\n`);
+  const reviewDir = path.join(parent, "review-queue");
+  const reviewDepth = existsSync(reviewDir) ? readdirSync(reviewDir).filter((name) => name.endsWith(".json")).length : 0;
+  process.stdout.write(`episodes: ${episodes.length}\nfailures: ${failures}\ntiers: ${JSON.stringify(tiers)}\nproposable clusters: ${clusterData.filter(isProposable).length}\npatches applied: ${ledger.filter((entry) => entry.applied === true).length}\nqueued: ${ledger.filter((entry) => entry.applied === false && entry.gate_decision !== "skipped" && entry.reason !== "already_applied").length}\nreview-queue depth: ${reviewDepth}\nlast run: ${ledger.at(-1)?.ts ?? "never"}\n`);
 }
 
 function objectOutcome(value) { return value !== null && typeof value === "object" && !Array.isArray(value); }

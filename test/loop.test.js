@@ -65,6 +65,7 @@ function writeLoopFixture(t, { replayHelps = false } = {}) {
   const savedCluster = cluster({
     id: "cl_fixture",
     signature: "Bash:file_not_found:missing-guidance",
+    dominantCwd: root,
     witnesses: [{ replayable: true, kind: "shell", cmd: `${JSON.stringify(process.execPath)} ${JSON.stringify(witness)}`, cwd: root, observedExitCode: 1 }],
   });
   writeFileSync(path.join(root, "clusters.json"), `${JSON.stringify([savedCluster], null, 2)}\n`);
@@ -89,11 +90,54 @@ test("planLoop layer-gates an otherwise proposable scaffolding cluster", () => {
   assert.equal(plan.skipped[0].layer, "scaffolding");
 });
 
+test("planLoop review mode schedules reviewable scaffolding for human review", () => {
+  const candidate = cluster({ id: "cl_timeout", errorClass: "timeout" });
+  const reviewed = planLoop([candidate], { mode: "review" });
+  assert.equal(reviewed.actions.length, 1);
+  assert.equal(reviewed.actions[0].layer, "scaffolding");
+  assert.equal(reviewed.actions[0].disposition, "human-review");
+  assert.equal(reviewed.skipped.length, 0);
+
+  const automatic = planLoop([candidate], { mode: "auto" });
+  assert.equal(automatic.actions.length, 0);
+  assert.equal(automatic.skipped[0].reason, "layer_gated");
+});
+
 test("planLoop identifies a missing causal witness", () => {
   const candidate = cluster({ id: "cl_no_witness", witnesses: [] });
   const plan = planLoop([candidate]);
   assert.equal(plan.actions.length, 0);
   assert.equal(plan.skipped[0].reason, "no_causal_witness");
+});
+
+test("planLoop review mode schedules a reviewable behavioral cluster for human review", () => {
+  const candidate = cluster({ id: "cl_behavioral", errorClass: "harness_blocked", witnesses: [] });
+  const reviewed = planLoop([candidate], { mode: "review" });
+  assert.equal(reviewed.actions.length, 1);
+  assert.equal(reviewed.actions[0].disposition, "human-review");
+  assert.equal(reviewed.actions[0].auto_apply, false);
+  assert.equal(planLoop([candidate]).skipped[0].reason, "no_causal_witness");
+});
+
+test("CLI review mode queues a behavioral patch and never applies it", (t) => {
+  const { root, episodesDir } = writeLoopFixture(t);
+  const clustersFile = path.join(root, "clusters.json");
+  const [saved] = JSON.parse(readFileSync(clustersFile, "utf8"));
+  saved.errorClass = "harness_blocked";
+  saved.witnesses = [];
+  writeFileSync(clustersFile, `${JSON.stringify([saved], null, 2)}\n`);
+  const target = path.join(root, "CLAUDE.md");
+  const before = readFileSync(target, "utf8");
+  const result = runCli(root, ["loop", "--mode", "review", "--llm", "echo", "--apply", "--in", episodesDir]);
+  assert.equal(result.status, 0, result.stderr);
+  const queued = JSON.parse(readFileSync(path.join(root, "review-queue", `${saved.id}.json`), "utf8"));
+  const ledger = readFileSync(path.join(root, "ledger.jsonl"), "utf8").trim().split("\n").map(JSON.parse);
+  assert.equal(queued.requires, "human-gate");
+  assert.equal(queued.meta.eval_strength, "behavioral");
+  assert.equal(ledger.at(-1).disposition, "human-review");
+  assert.equal(ledger.at(-1).applied, false);
+  assert.equal(readFileSync(target, "utf8"), before);
+  assert.match(result.stdout, /cluster\s+layer\s+gate\s+eval-strength\s+queued-for-review/);
 });
 
 test("planLoop rejects a non-proposable cluster", () => {
@@ -106,6 +150,21 @@ test("planLoop rejects a non-proposable cluster", () => {
   const plan = planLoop([candidate]);
   assert.equal(plan.actions.length, 0);
   assert.equal(plan.skipped[0].reason, "not_proposable");
+});
+
+test("planLoop max caps actions rather than scanned clusters", () => {
+  const candidates = [
+    cluster({ id: "cl_skipped_unknown", signature: "sig_1", tierCounts: { gold: 0, strong: 0, weak: 0, unknown: 3 } }),
+    cluster({ id: "cl_skipped_tail", signature: "sig_2", isLongTail: true }),
+    cluster({ id: "cl_action_first", signature: "sig_3" }),
+    cluster({ id: "cl_action_second", signature: "sig_4" }),
+    cluster({ id: "cl_action_third", signature: "sig_5" }),
+  ];
+  for (const mode of ["auto", "review"]) {
+    const plan = planLoop(candidates, { ranked: true, max: 1, mode });
+    assert.deepEqual(plan.actions.map((item) => item.cluster.id), ["cl_action_first"]);
+    assert.deepEqual(plan.skipped.map((item) => item.cluster.id), ["cl_skipped_unknown", "cl_skipped_tail"]);
+  }
 });
 
 test("planLoop skips later context actions after exhausting the line budget", () => {
