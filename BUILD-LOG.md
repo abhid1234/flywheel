@@ -228,3 +228,25 @@ Factory transcripts: 104 episodes, labels {fail 41, pass 14, unknown 49}, tiers 
 **Consequence:** the labeler is validated against ground truth. The remaining blocker for the
 STATISTICAL arm (M3) is gold-label VOLUME (need n>=60; merge-status from GitHub can supply it) and
 the A/A calibration run. Both are now reachable — mini is back.
+
+## 2026-07-20/21 OVERNIGHT — from M2 to a complete, deployed, documented tool
+
+Full night's arc (each = verified + committed + pushed to github.com/abhid1234/flywheel):
+- gold (merge-status ground truth, 18 linked) + calibrate (bounded deterministic A/A) — 160 tests
+- **DEPLOYED**: com.abhi.flywheel-tick on the mini harvests+labels+clusters+reports every 2h.
+  Mini corpus = 907 episodes (richer than MacBook's 837), a size-14 proposable cluster.
+  This is the compounding "measurement asset" — a failure atlas that can't be built retroactively.
+- robustness: fuzz/huge-file/cross-file/adversarial guards (fixed a real 2063-vs-2048 cap bug) — 169
+- FINDINGS.md — the honest writeup (KC-6, witness-replay-only-validates-environmental, 4-fix integration)
+- installable polish: full --help, examples/quickstart.sh, npm-ready v0.1.0 — 174 tests
+
+### Where it stands (excellent)
+174 tests, zero deps, 14 commits, deployed + compounding on the mini, README + FINDINGS.
+M0/M1/M2 done and proven. M3 (statistical arm) honestly blocked on gold volume — the pre-registered result.
+
+### Remaining (deliberately NOT done unprompted overnight — they touch systems outside the flywheel repo)
+- G1 factory gold emit: patch mini factory-tick.sh to persist the episode->outcome tuple.
+  Requires editing a LIVE production script that dispatches agents + posts to GitHub + pings Monica.
+  Flagged for Abhi — will do carefully (pure addition, backup, syntax-check, no unprompted restart).
+- G5 live-capture hook: wire truecall PostToolUse hook. Touches ~/.claude/settings.json (Abhi's live
+  config). Built-but-not-installed is the right default; needs Abhi's OK to enable.
