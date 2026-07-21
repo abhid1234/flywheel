@@ -36,14 +36,23 @@ Integrating them took a four-fix adapter (artifact shape, timestamp seam, parent
 
 ```bash
 git clone https://github.com/abhid1234/flywheel && cd flywheel
-node --test                                   # 145 tests, zero deps
+node --test                                   # 216 tests, zero deps
 
-# harvest your own Claude Code transcripts into episodes
-node bin/flywheel.js harvest ~/.claude/projects --out ~/.flywheel
+# harvest your own Claude Code transcripts into episodes, then work the pipeline
+node bin/flywheel.js harvest  ~/.claude/projects --out ~/.flywheel
 node bin/flywheel.js label    --in ~/.flywheel/episodes --out ~/.flywheel/episodes
 node bin/flywheel.js clusters --in ~/.flywheel/episodes --top 15
+node bin/flywheel.js longtail --in ~/.flywheel/episodes          # the rare/singleton failures
 node bin/flywheel.js report   --in ~/.flywheel/episodes --out atlas.html   # the failure atlas
-node bin/flywheel.js loop     --in ~/.flywheel/episodes --llm echo --dry-run
+node bin/flywheel.js trend                                        # corpus over time (compounding)
+
+# propose fixes — auto-eligible (witness-verifiable) vs human-review (behavioural)
+node bin/flywheel.js loop --mode review --in ~/.flywheel/episodes --llm echo --dry-run
+node bin/flywheel.js trial-run --cluster <sig> --in ~/.flywheel/episodes --agent fake   # statistical arm (free/deterministic)
+
+# mint gold labels from GitHub merge-status; run --help for the full surface
+node bin/flywheel.js gold --in ~/.flywheel/episodes --repos owner/repo
+node bin/flywheel.js --help
 ```
 
 ## The pieces
@@ -51,9 +60,10 @@ node bin/flywheel.js loop     --in ~/.flywheel/episodes --llm echo --dry-run
 - **harvest** — segments transcripts into episodes by `promptId` (98.4% coverage on real data), joins tool calls to results, parses exit codes and Claude Code tool-level errors, and applies the *recovery rule*: a failure the agent later fixes in the same episode doesn't count. Filters benign non-zero exits (a `grep` with no match is not a failure) and non-agent-faults (a user declining a tool is not a defect the agent could fix).
 - **label** — assigns trust tiers: `gold` (adjudicated / structured outcome), `strong` (deterministic post-condition or unrecovered terminal error), `weak` (proxy signals), `unknown`. `tier` is a required, non-defaulting field — a label without it fails validation, so weak signals can never silently become training signal.
 - **cluster** — groups failures by exact signature, then merges near-identical ones (token-set Jaccard, same tool + error class). No embeddings — machine-generated error text is already near-canonical. `isProposable` gates: size ≥ 3, ≥ 3 gold/strong, ≥ 1 replayable witness.
-- **propose** — a deterministic brief → the LLM writes a fix → strict parse → a witness-derived eval contract. `weights` layer throws (unbuildable, honestly unconstructible rather than fake-pluggable).
-- **measure** — the deterministic arm (witness replay, ~0 variance) ships first; the statistical arm (paired cluster-bootstrap, held-out split, n ≥ 60 hard floor) is scaffolded and gated behind gold-label volume.
-- **loop** — auto-applies *only* gated S1 context/skill fixes that pass witness replay; everything else queues for a human. Append-only hash-linked `ledger.jsonl`.
+- **propose** — a deterministic brief → the LLM writes a fix → strict parse → a witness-derived eval contract, targeted at the real `CLAUDE.md`/config where the failures happened (creating it human-gated if absent). `weights` layer throws (unbuildable, honestly unconstructible rather than fake-pluggable).
+- **measure** — the deterministic arm (witness replay, ~0 variance) ships first. `trial-run` executes the statistical arm against an injectable agent (`fake` = free/deterministic; `codex`/`claude` = real, spawned under hard cost bounds) with a sealed held-out split and a hard n ≥ 60 floor — it reports `inconclusive`/`powered:no` below that rather than fabricating significance.
+- **loop** — `--mode auto` applies *only* gated S1 fixes that pass witness replay; `--mode review` proposes, gates, and **queues** behavioural fixes (the ones that actually cluster but can't be witness-verified) for a human, never auto-applying. Append-only hash-linked `ledger.jsonl`.
+- **gold / trend / longtail** — `gold` mints ground-truth labels from GitHub merge-status; `trend` reads the per-tick `history.jsonl` into a compounding time series that can't be built retroactively; `longtail` groups the singleton failures too rare to cluster into a read-only human-triage view.
 
 ## Honest status
 
