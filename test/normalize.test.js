@@ -21,6 +21,7 @@ test("normalization rejects non-string input", () => {
 const classificationCases = [
   ["user_rejected", "The user doesn't want to proceed with this tool use. The tool use was rejected", ""],
   ["tool_unavailable", "Error: No such tool available: SendUserFile. SendUserFile exists but is not enabled in this context.", ""],
+  ["harness_blocked", "Blocked: sleep 25 followed by: cd ...", "sleep"],
   ["harness_precondition", "File has not been read yet. Read it first before writing to it.", ""],
   ["stale_reference", "Task bygd9yt3o is not running (status: completed)", ""],
   ["wrong_invocation", "remote-control is a UI command, not a skill. Ask the user to run /remote-control themselves", ""],
@@ -30,8 +31,11 @@ const classificationCases = [
   ["file_not_found", "ENOENT: no such file or directory, open '/srv/app/config.json'", "config.json"],
   ["permission", "EACCES: permission denied, open '/etc/hosts'", ""],
   ["test_failure", "12 tests failed in integration suite", "12"],
+  ["shell_syntax", "/bin/bash: eval: line 18: unexpected EOF while looking for matching", ""],
   ["type_error", "src/index.ts(4,2): error TS2345: invalid argument", "2345"],
   ["syntax_error", "SyntaxError: unexpected end of input", ""],
+  ["runtime_error", "Traceback (most recent call last): File \"<stdin>\", line 7, in <module> ...", ""],
+  ["usage_error", "cat: illegal option -- A\nusage: cat [-belnstuv] ...", "cat"],
   ["network", "connect ECONNREFUSED 127.0.0.1:5432", ""],
   ["git_conflict", "CONFLICT (content): Merge conflict in README.md", ""],
   ["timeout", "Command timed out after 30 seconds", ""],
@@ -58,6 +62,18 @@ test("non-agent fault classes exclude user choices, unavailable tools, and races
   assert.equal(AGENT_FAULT_CLASSES.has("user_rejected"), false);
   assert.equal(AGENT_FAULT_CLASSES.has("tool_unavailable"), false);
   assert.equal(AGENT_FAULT_CLASSES.has("stale_reference"), false);
+  for (const errorClass of ["runtime_error", "shell_syntax", "harness_blocked", "usage_error"]) {
+    assert.equal(AGENT_FAULT_CLASSES.has(errorClass), true);
+  }
+});
+
+test("shell syntax takes precedence over generic syntax errors", () => {
+  assert.equal(classifyError("SyntaxError: syntax error: unexpected end of file").errorClass, "shell_syntax");
+});
+
+test("runtime errors capture exception types without swallowing missing modules", () => {
+  assert.deepEqual(classifyError("WidgetError: exploded\n    at run (/tmp/a.js:4:2)"), { errorClass: "runtime_error", salient: "widgeterror" });
+  assert.equal(classifyError("ModuleNotFoundError: No module named 'yaml'").errorClass, "module_not_found");
 });
 
 test("recognizes conservative benign exit-one cases", () => {

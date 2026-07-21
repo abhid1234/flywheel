@@ -20,8 +20,8 @@ const fenced = (value) => `\`\`\`json\n${JSON.stringify(value)}\n\`\`\``;
 const brief = (text = "old line") => ({ layer: "context", target: "CLAUDE.md", targetCurrentText: text, constraints: { maxLinesChanged: 20 } });
 
 test("routeCluster maps every error class and makes weights unconstructible", () => {
-  for (const errorClass of ["module_not_found", "command_not_found", "file_not_found"]) assert.equal(routeCluster({ errorClass }).layer, "context");
-  for (const errorClass of ["edit_no_match", "test_failure", "harness_precondition", "git_conflict"]) assert.equal(routeCluster({ errorClass }).layer, "skill");
+  for (const errorClass of ["module_not_found", "command_not_found", "file_not_found", "harness_blocked"]) assert.equal(routeCluster({ errorClass }).layer, "context");
+  for (const errorClass of ["edit_no_match", "test_failure", "harness_precondition", "git_conflict", "runtime_error", "shell_syntax", "usage_error"]) assert.equal(routeCluster({ errorClass }).layer, "skill");
   for (const errorClass of ["permission", "timeout", "network"]) assert.deepEqual(routeCluster({ errorClass }), { layer: "scaffolding", surfaces: ["scaffolding"], requires: "human-gate" });
   for (const errorClass of ["user_rejected", "tool_unavailable", "stale_reference"]) assert.throws(() => routeCluster({ errorClass }));
   assert.throws(() => routeCluster({ layer: "weights", errorClass: "other" }));

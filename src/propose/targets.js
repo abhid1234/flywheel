@@ -5,8 +5,8 @@ export const LAYER_STATUS = Object.freeze({
   weights: "unavailable",
 });
 
-const CONTEXT = new Set(["module_not_found", "command_not_found", "file_not_found"]);
-const SKILL = new Set(["edit_no_match", "test_failure", "harness_precondition", "git_conflict"]);
+const CONTEXT = new Set(["module_not_found", "command_not_found", "file_not_found", "harness_blocked"]);
+const SKILL = new Set(["edit_no_match", "test_failure", "harness_precondition", "git_conflict", "runtime_error", "shell_syntax", "usage_error"]);
 const SCAFFOLDING = new Set(["permission", "timeout", "network"]);
 const NON_AGENT_FAULT = new Set(["user_rejected", "tool_unavailable", "stale_reference"]);
 
