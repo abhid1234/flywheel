@@ -1,0 +1,917 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>flywheel · playground</title>
+<meta name="description" content="An interactive walkthrough of flywheel — agents that improve from their own production traces. Step the real pipeline, classify errors live, and see the one honest result.">
+<style>
+/* ============================================================
+   flywheel playground — diagnostic instrument / lab notebook
+   Palette: cool graphite + blueprint neutrals, warm brass accent.
+   red→green reserved for witness-replay state. indigo for blocked.
+   Mono-forward identity: the tool's native material is trace text.
+   ============================================================ */
+:root{
+  --paper:#e7ebef;
+  --paper-2:#dde3e9;
+  --card:#f4f6f8;
+  --card-2:#eef1f4;
+  --ink:#141d26;
+  --ink-2:#4a5765;
+  --ink-3:#7c8894;
+  --line:#cdd5dd;
+  --line-2:#bcc6cf;
+  --brass:#8a6417;
+  --brass-2:#a67c22;
+  --brass-glow:rgba(166,124,34,.14);
+  --red:#c23b2b;
+  --green:#1f7a4d;
+  --indigo:#4a58a8;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
+  --maxw:1080px;
+  --r:14px;
+  --shadow:0 1px 2px rgba(20,29,38,.04), 0 8px 30px rgba(20,29,38,.06);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --paper:#0e141b;
+    --paper-2:#0a0f14;
+    --card:#161f28;
+    --card-2:#1b2732;
+    --ink:#e7edf2;
+    --ink-2:#9aa8b5;
+    --ink-3:#6a7783;
+    --line:#26333f;
+    --line-2:#324150;
+    --brass:#e0b452;
+    --brass-2:#eec66d;
+    --brass-glow:rgba(224,180,82,.12);
+    --red:#f0705e;
+    --green:#54c088;
+    --indigo:#93a0e6;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 12px 40px rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="light"]{
+  --paper:#e7ebef;--paper-2:#dde3e9;--card:#f4f6f8;--card-2:#eef1f4;
+  --ink:#141d26;--ink-2:#4a5765;--ink-3:#7c8894;--line:#cdd5dd;--line-2:#bcc6cf;
+  --brass:#8a6417;--brass-2:#a67c22;--brass-glow:rgba(166,124,34,.14);
+  --red:#c23b2b;--green:#1f7a4d;--indigo:#4a58a8;
+  --shadow:0 1px 2px rgba(20,29,38,.04), 0 8px 30px rgba(20,29,38,.06);
+}
+:root[data-theme="dark"]{
+  --paper:#0e141b;--paper-2:#0a0f14;--card:#161f28;--card-2:#1b2732;
+  --ink:#e7edf2;--ink-2:#9aa8b5;--ink-3:#6a7783;--line:#26333f;--line-2:#324150;
+  --brass:#e0b452;--brass-2:#eec66d;--brass-glow:rgba(224,180,82,.12);
+  --red:#f0705e;--green:#54c088;--indigo:#93a0e6;
+  --shadow:0 1px 2px rgba(0,0,0,.3), 0 12px 40px rgba(0,0,0,.35);
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--paper);color:var(--ink);
+  font-family:var(--sans);font-size:16px;line-height:1.6;
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+  background-image:radial-gradient(circle at 1px 1px, var(--line) 1px, transparent 0);
+  background-size:26px 26px;background-attachment:fixed;
+}
+@media (prefers-color-scheme: dark){body{background-image:radial-gradient(circle at 1px 1px, #18222c 1px, transparent 0)}}
+:root[data-theme="dark"] body{background-image:radial-gradient(circle at 1px 1px, #18222c 1px, transparent 0)}
+:root[data-theme="light"] body{background-image:radial-gradient(circle at 1px 1px, var(--line) 1px, transparent 0)}
+
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 22px}
+section{padding:64px 0;border-top:1px solid var(--line)}
+section:first-of-type{border-top:0}
+
+/* ---- type ---- */
+h1,h2,h3{margin:0;text-wrap:balance;letter-spacing:-.02em;font-weight:800;line-height:1.05}
+h1{font-size:clamp(38px,7vw,68px)}
+h2{font-size:clamp(26px,3.6vw,38px)}
+h3{font-size:19px;letter-spacing:-.01em}
+p{margin:0}
+a{color:var(--brass);text-decoration:none;border-bottom:1px solid color-mix(in srgb, var(--brass) 40%, transparent)}
+a:hover{border-bottom-color:var(--brass)}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+.lead{font-size:clamp(17px,2vw,20px);color:var(--ink-2);line-height:1.55;max-width:64ch}
+.mono{font-family:var(--mono)}
+.small{font-size:13.5px;color:var(--ink-2);line-height:1.5}
+.tnum{font-variant-numeric:tabular-nums}
+
+/* ---- top bar ---- */
+.topbar{position:sticky;top:0;z-index:40;background:color-mix(in srgb, var(--paper) 86%, transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.topbar .wrap{display:flex;align-items:center;gap:16px;height:56px}
+.brandmark{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-weight:700;letter-spacing:-.01em;color:var(--ink)}
+.brandmark canvas{display:block}
+.topnav{margin-left:auto;display:flex;align-items:center;gap:22px}
+.topnav a{font-family:var(--mono);font-size:13px;color:var(--ink-2);border:0}
+.topnav a:hover{color:var(--brass)}
+.themebtn{border:1px solid var(--line-2);background:var(--card);color:var(--ink-2);border-radius:8px;width:34px;height:34px;cursor:pointer;font-size:15px;display:grid;place-items:center}
+.themebtn:hover{border-color:var(--brass);color:var(--brass)}
+@media(max-width:640px){.topnav a[data-hideable]{display:none}}
+
+/* ---- hero ---- */
+.hero{padding-top:56px;padding-bottom:40px}
+.hero-grid{display:grid;grid-template-columns:1.35fr .9fr;gap:44px;align-items:center}
+@media(max-width:840px){.hero-grid{grid-template-columns:1fr;gap:30px}}
+.hero h1{margin:16px 0 20px}
+.hero h1 .g{color:var(--brass)}
+.pipeline-word{font-family:var(--mono);font-size:13px;letter-spacing:.02em;color:var(--ink-3);display:flex;flex-wrap:wrap;gap:6px 4px;margin-top:26px}
+.pipeline-word span{padding:3px 9px;border:1px solid var(--line-2);border-radius:20px;background:var(--card)}
+.pipeline-word span.k{color:var(--brass);border-color:color-mix(in srgb,var(--brass) 40%, var(--line-2))}
+.pipeline-word b{color:var(--ink-3);font-weight:400;align-self:center}
+.flystage{display:grid;place-items:center;position:relative}
+.flystage canvas{max-width:100%;height:auto;filter:drop-shadow(0 10px 30px var(--brass-glow))}
+.stat-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:26px}
+.stat{flex:1;min-width:120px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.stat .n{font-size:26px;font-weight:800;letter-spacing:-.03em}
+.stat .l{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin-top:2px}
+
+/* ---- the rule ---- */
+.rule-card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:30px 32px;box-shadow:var(--shadow);position:relative;overflow:hidden}
+.rule-card::before{content:"";position:absolute;inset:0 auto 0 0;width:4px;background:linear-gradient(var(--brass),var(--brass-2))}
+.rule-quote{font-size:clamp(22px,3vw,30px);font-weight:800;letter-spacing:-.02em;line-height:1.2;max-width:22ch}
+.rule-quote .strike{color:var(--ink-3);position:relative}
+.rule-quote em{color:var(--brass);font-style:normal}
+.toggle-demo{margin-top:26px;display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:640px){.toggle-demo{grid-template-columns:1fr}}
+.td{border:1px solid var(--line-2);border-radius:12px;padding:16px 18px;background:var(--card-2);transition:border-color .2s, background .2s}
+.td.bad{border-color:color-mix(in srgb,var(--red) 35%,var(--line-2))}
+.td.good{border-color:color-mix(in srgb,var(--green) 40%,var(--line-2))}
+.td h4{margin:0 0 8px;font-family:var(--mono);font-size:12px;letter-spacing:.06em;text-transform:uppercase}
+.td.bad h4{color:var(--red)}.td.good h4{color:var(--green)}
+.tag{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;letter-spacing:.04em;padding:3px 8px;border-radius:6px;border:1px solid var(--line-2)}
+
+/* ---- pipeline stepper ---- */
+.rail{display:flex;gap:6px;align-items:stretch;overflow-x:auto;padding:4px 2px 12px;margin-top:8px;scrollbar-width:thin}
+.rail-node{flex:1 0 auto;min-width:96px;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:11px;padding:11px 12px;cursor:pointer;transition:all .18s;position:relative;color:var(--ink)}
+.rail-node:hover{border-color:var(--line-2)}
+.rail-node .idx{font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+.rail-node .nm{font-family:var(--mono);font-weight:700;font-size:13px;margin-top:3px;letter-spacing:-.01em}
+.rail-node[aria-selected="true"]{border-color:var(--brass);background:color-mix(in srgb,var(--brass-glow) 60%, var(--card));box-shadow:0 0 0 1px var(--brass) inset}
+.rail-node[data-done="true"] .idx{color:var(--brass)}
+.rail-node .dot{position:absolute;top:10px;right:10px;width:6px;height:6px;border-radius:50%;background:var(--line-2)}
+.rail-node[data-done="true"] .dot{background:var(--brass)}
+
+.stage-panel{display:grid;grid-template-columns:1.05fr 1fr;gap:0;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:var(--card);box-shadow:var(--shadow);margin-top:16px}
+@media(max-width:840px){.stage-panel{grid-template-columns:1fr}}
+.stage-left{padding:26px 28px;border-right:1px solid var(--line)}
+@media(max-width:840px){.stage-left{border-right:0;border-bottom:1px solid var(--line)}}
+.stage-verb{font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--brass);font-weight:700}
+.stage-left h3{margin:8px 0 4px;font-size:24px;font-weight:800;letter-spacing:-.02em}
+.stage-tag{color:var(--ink-2);font-size:15px;margin-bottom:18px}
+.stage-block{margin-top:16px}
+.stage-block .lbl{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin-bottom:6px}
+.stage-block p{font-size:14.5px;color:var(--ink-2);line-height:1.55}
+.stage-right{padding:22px 24px;background:var(--card-2);display:flex;flex-direction:column;gap:14px;min-width:0}
+.io{min-width:0}
+.io .lbl{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin-bottom:6px;display:flex;align-items:center;gap:8px}
+.io .lbl .arrow{color:var(--brass)}
+.codebox{font-family:var(--mono);font-size:12.5px;line-height:1.5;background:var(--paper-2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow-x:auto;white-space:pre;color:var(--ink);margin:0}
+.codebox.wrapy{white-space:pre-wrap;word-break:break-word}
+.c-key{color:var(--ink-3)}
+.c-str{color:var(--brass)}
+.c-red{color:var(--red);font-weight:600}
+.c-green{color:var(--green);font-weight:600}
+.c-ind{color:var(--indigo);font-weight:600}
+.stage-ctrl{display:flex;align-items:center;gap:12px;margin-top:18px}
+.btn{font-family:var(--mono);font-weight:700;font-size:13px;border-radius:9px;padding:9px 16px;cursor:pointer;border:1px solid var(--line-2);background:var(--card);color:var(--ink);transition:all .15s}
+.btn:hover{border-color:var(--brass);color:var(--brass)}
+.btn.primary{background:var(--brass);border-color:var(--brass);color:#fff}
+:root[data-theme="dark"] .btn.primary,@media(prefers-color-scheme:dark){}
+.btn.primary{color:#1a130a}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn:focus-visible,.rail-node:focus-visible,.themebtn:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+.stepcount{font-family:var(--mono);font-size:12px;color:var(--ink-3);margin-left:auto}
+
+/* ---- signature lab ---- */
+.lab{border:1px solid var(--line);border-radius:var(--r);background:var(--card);box-shadow:var(--shadow);overflow:hidden}
+.lab-head{padding:18px 22px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;background:var(--card-2)}
+.lab-head .dotrow{display:flex;gap:6px}
+.lab-head .dotrow i{width:10px;height:10px;border-radius:50%;background:var(--line-2)}
+.lab-body{display:grid;grid-template-columns:1fr 1fr;gap:0}
+@media(max-width:760px){.lab-body{grid-template-columns:1fr}}
+.lab-in{padding:20px 22px;border-right:1px solid var(--line);display:flex;flex-direction:column;gap:14px}
+@media(max-width:760px){.lab-in{border-right:0;border-bottom:1px solid var(--line)}}
+.lab-out{padding:20px 22px;display:flex;flex-direction:column;gap:14px;background:var(--card-2);min-width:0}
+.field label{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);display:block;margin-bottom:6px}
+textarea,select,input[type=text]{width:100%;font-family:var(--mono);font-size:13px;color:var(--ink);background:var(--paper-2);border:1px solid var(--line-2);border-radius:9px;padding:10px 12px;resize:vertical}
+textarea{min-height:88px;line-height:1.5}
+.presets{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-family:var(--mono);font-size:11.5px;padding:5px 10px;border-radius:7px;border:1px solid var(--line-2);background:var(--card);color:var(--ink-2);cursor:pointer;transition:all .15s}
+.chip:hover{border-color:var(--brass);color:var(--brass)}
+.out-row{display:flex;flex-direction:column;gap:5px}
+.out-row .lbl{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+.classpill{align-self:flex-start;font-family:var(--mono);font-weight:700;font-size:14px;padding:6px 12px;border-radius:8px;background:var(--brass-glow);color:var(--brass);border:1px solid color-mix(in srgb,var(--brass) 35%, transparent)}
+.fault{align-self:flex-start;font-family:var(--mono);font-size:11.5px;padding:3px 9px;border-radius:6px;border:1px solid var(--line-2)}
+.fault.yes{color:var(--green);border-color:color-mix(in srgb,var(--green) 40%,transparent)}
+.fault.no{color:var(--indigo);border-color:color-mix(in srgb,var(--indigo) 40%,transparent)}
+.sigbox{font-family:var(--mono);font-size:14px;font-weight:700;padding:12px 14px;border-radius:10px;background:var(--paper-2);border:1px solid var(--line-2);word-break:break-all;line-height:1.5}
+.sigbox .p-tool{color:var(--ink)}
+.sigbox .p-cls{color:var(--brass)}
+.sigbox .p-head{color:var(--ink-2)}
+.sigbox .p-sal{color:var(--indigo)}
+.sigbox .p-sep{color:var(--ink-3)}
+.flash{animation:flash .5s ease}
+@keyframes flash{0%{background:var(--brass-glow)}100%{background:var(--paper-2)}}
+.lab-note{font-size:13px;color:var(--ink-2);line-height:1.5}
+
+/* ---- replay ---- */
+.replay-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:8px}
+@media(max-width:760px){.replay-grid{grid-template-columns:1fr}}
+.replay-card{border:1px solid var(--line);border-radius:var(--r);background:var(--card);padding:22px 24px;box-shadow:var(--shadow)}
+.replay-card h3{display:flex;align-items:center;gap:10px;font-size:18px}
+.replay-card .kind{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:6px}
+.replay-card.env .kind{color:var(--green);border:1px solid color-mix(in srgb,var(--green) 40%,transparent)}
+.replay-card.beh .kind{color:var(--indigo);border:1px solid color-mix(in srgb,var(--indigo) 40%,transparent)}
+.replay-cmd{font-family:var(--mono);font-size:12px;color:var(--ink-2);background:var(--paper-2);border:1px solid var(--line);border-radius:8px;padding:9px 11px;margin:14px 0;overflow-x:auto;white-space:pre}
+.bars{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.bar{display:flex;align-items:center;gap:10px}
+.bar .t{font-family:var(--mono);font-size:11px;color:var(--ink-3);width:52px;flex-shrink:0}
+.bar .track{flex:1;height:22px;border-radius:6px;background:var(--paper-2);border:1px solid var(--line);overflow:hidden;position:relative}
+.bar .fill{height:100%;width:0;transition:width .9s cubic-bezier(.4,0,.2,1)}
+.bar .fill.red{background:color-mix(in srgb,var(--red) 78%, transparent)}
+.bar .fill.green{background:color-mix(in srgb,var(--green) 78%, transparent)}
+.bar .v{font-family:var(--mono);font-size:11px;width:44px;text-align:right;color:var(--ink-2)}
+.replay-verdict{margin-top:16px;font-family:var(--mono);font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px}
+.replay-verdict.ok{color:var(--green)}
+.replay-verdict.blocked{color:var(--indigo)}
+
+/* ---- wall / kc6 ---- */
+.wall{display:grid;grid-template-columns:1.1fr .9fr;gap:26px;align-items:center}
+@media(max-width:840px){.wall{grid-template-columns:1fr}}
+.gold-meter{border:1px solid var(--line);border-radius:var(--r);background:var(--card);padding:24px;box-shadow:var(--shadow)}
+.gold-meter .top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px}
+.gold-meter .big{font-size:40px;font-weight:800;letter-spacing:-.03em}
+.gold-meter .big small{font-size:18px;color:var(--ink-3);font-weight:600}
+.meter-track{height:16px;border-radius:8px;background:var(--paper-2);border:1px solid var(--line);overflow:hidden;display:flex}
+.meter-fill{background:linear-gradient(90deg,var(--brass),var(--brass-2));width:5%}
+.meter-ticks{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--ink-3);margin-top:6px}
+.finding-list{display:flex;flex-direction:column;gap:12px}
+.finding{border:1px solid var(--line);border-left:3px solid var(--brass);border-radius:10px;padding:13px 16px;background:var(--card)}
+.finding .ok{color:var(--green)}.finding .wall-i{color:var(--indigo)}
+.finding b{font-family:var(--mono);font-size:12.5px;letter-spacing:.02em}
+.finding p{font-size:13.5px;color:var(--ink-2);margin-top:3px;line-height:1.5}
+
+/* ---- atlas table ---- */
+.atlas{border:1px solid var(--line);border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow);background:var(--card)}
+.atlas table{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:12.5px}
+.atlas th{text-align:left;padding:11px 16px;background:var(--card-2);color:var(--ink-3);font-weight:600;letter-spacing:.04em;font-size:11px;text-transform:uppercase;border-bottom:1px solid var(--line)}
+.atlas td{padding:11px 16px;border-bottom:1px solid var(--line);color:var(--ink)}
+.atlas tr:last-child td{border-bottom:0}
+.atlas .sig{color:var(--ink)}
+.atlas .n{text-align:right;font-variant-numeric:tabular-nums;color:var(--ink-2)}
+.atlas .prop-y{color:var(--green)}
+.atlas .prop-n{color:var(--ink-3)}
+.spark{display:inline-flex;gap:2px;align-items:flex-end;height:20px}
+.spark i{width:5px;background:var(--brass);border-radius:1px;opacity:.85}
+
+/* ---- footer ---- */
+.foot{border-top:1px solid var(--line);padding:48px 0 60px}
+.foot-cta{display:flex;flex-wrap:wrap;gap:12px;margin:20px 0 26px}
+.cta-btn{font-family:var(--mono);font-size:13px;font-weight:700;padding:11px 18px;border-radius:10px;border:1px solid var(--line-2);background:var(--card);color:var(--ink);transition:all .15s}
+.cta-btn:hover{border-color:var(--brass);color:var(--brass);transform:translateY(-1px)}
+.cta-btn.p{background:var(--brass);border-color:var(--brass);color:#1a130a}
+.cta-btn.p:hover{color:#1a130a}
+.foot-meta{font-family:var(--mono);font-size:12px;color:var(--ink-3);line-height:1.7}
+
+.sec-head{margin-bottom:22px}
+.sec-head h2{margin:8px 0 10px}
+.sec-head .lead{margin-top:2px}
+
+@media(prefers-reduced-motion:reduce){
+  *{animation-duration:.001ms!important;transition-duration:.001ms!important}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="wrap">
+    <div class="brandmark"><canvas id="markCanvas" width="52" height="52" aria-hidden="true"></canvas><span>flywheel</span></div>
+    <nav class="topnav">
+      <a href="#pipeline" data-hideable>pipeline</a>
+      <a href="#lab" data-hideable>signature lab</a>
+      <a href="#result" data-hideable>the result</a>
+      <a href="https://github.com/abhid1234/flywheel">github ↗</a>
+      <button class="themebtn" id="themeBtn" aria-label="Toggle light/dark theme" title="Toggle theme">◐</button>
+    </nav>
+  </div>
+</div>
+
+<!-- ============ HERO ============ -->
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <div class="eyebrow">an interactive walkthrough</div>
+      <h1>Agents that improve from their own <span class="g">production traces</span>.</h1>
+      <p class="lead">flywheel harvests what an agent actually did, finds what keeps going wrong, proposes a fix, and — the part everyone skips — <b>measures whether the fix helped</b> by replaying the exact command that failed. This page runs the real pipeline on real data, live in your browser.</p>
+      <div class="pipeline-word" aria-label="pipeline stages">
+        <span class="k">harvest</span><b>→</b><span class="k">label</span><b>→</b><span class="k">cluster</span><b>→</b><span class="k">propose</span><b>→</b><span class="k">gate</span><b>→</b><span class="k">measure</span><b>→</b><span class="k">attest</span>
+      </div>
+      <div class="stat-row">
+        <div class="stat"><div class="n tnum">218</div><div class="l">tests · 0 deps</div></div>
+        <div class="stat"><div class="n tnum">921</div><div class="l">episodes harvested</div></div>
+        <div class="stat"><div class="n">1</div><div class="l">honest result</div></div>
+      </div>
+    </div>
+    <div class="flystage">
+      <canvas id="flywheelCanvas" width="340" height="340" role="img" aria-label="A slowly rotating engraved brass flywheel, the project's namesake."></canvas>
+    </div>
+  </div>
+</section>
+
+<!-- ============ THE ONE RULE ============ -->
+<section id="rule">
+  <div class="wrap">
+    <div class="rule-card">
+      <div class="eyebrow" style="margin-bottom:14px">the one rule everything is built around</div>
+      <div class="rule-quote">The model writes the <em>fix</em>. It never writes the <span class="strike">success criterion</span>.</div>
+      <p class="small" style="margin-top:16px;max-width:60ch">If a model can author its own passing test, a self-improvement loop optimizes for the model's <i>imagination</i> instead of reality. So the success criterion is derived deterministically from the observed failure — a <b>witness</b>: the exact command, in the exact directory, that failed in production.</p>
+      <div class="toggle-demo">
+        <div class="td bad">
+          <h4>✕ the imagination trap</h4>
+          <p class="small">Model proposes a fix <i>and</i> writes the test that grades it. The test passes. Nothing real was verified — the loop just learned to satisfy itself.</p>
+          <div style="margin-top:10px"><span class="tag" style="color:var(--red);border-color:color-mix(in srgb,var(--red) 35%,var(--line-2))">graded by: the model</span></div>
+        </div>
+        <div class="td good">
+          <h4>✓ the flywheel rule</h4>
+          <p class="small">The criterion comes from a recorded failure the model can't touch. A fix is "verified" only when replaying that witness goes <span class="c-red">red</span> → <span class="c-green">green</span>.</p>
+          <div style="margin-top:10px"><span class="tag" style="color:var(--green);border-color:color-mix(in srgb,var(--green) 40%,var(--line-2))">graded by: reality</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PIPELINE STEPPER ============ -->
+<section id="pipeline">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="eyebrow">step through it · one real episode</div>
+      <h2>Watch a failure become a verified fix.</h2>
+      <p class="lead">A single agent episode — a script that crashed with <span class="mono">ModuleNotFoundError</span> — flows through all seven stages. Click a stage, or step forward. Every panel shows the real input and output at that stage.</p>
+    </div>
+    <div class="rail" id="rail" role="tablist" aria-label="Pipeline stages"></div>
+    <div class="stage-panel">
+      <div class="stage-left">
+        <div class="stage-verb" id="sVerb"></div>
+        <h3 id="sName"></h3>
+        <div class="stage-tag" id="sTag"></div>
+        <div class="stage-block">
+          <div class="lbl">what's happening</div>
+          <p id="sWhat"></p>
+        </div>
+        <div class="stage-block">
+          <div class="lbl">why it matters</div>
+          <p id="sWhy"></p>
+        </div>
+        <div class="stage-ctrl">
+          <button class="btn" id="prevBtn">← back</button>
+          <button class="btn primary" id="nextBtn">step forward →</button>
+          <span class="stepcount" id="stepCount"></span>
+        </div>
+      </div>
+      <div class="stage-right">
+        <div class="io">
+          <div class="lbl"><span id="inLbl">input</span></div>
+          <pre class="codebox" id="sIn"></pre>
+        </div>
+        <div class="io">
+          <div class="lbl"><span class="arrow">▼</span> <span id="outLbl">output</span></div>
+          <pre class="codebox" id="sOut"></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SIGNATURE LAB ============ -->
+<section id="lab">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="eyebrow">live · the real classifier runs in your browser</div>
+      <h2>The Signature Lab.</h2>
+      <p class="lead">flywheel clusters failures with <b>no embeddings</b> — machine-generated error text is already near-canonical, so clustering is a <span class="mono">GROUP BY</span> on a scrubbed signature. Paste any error below. The exact <span class="mono">classifyError</span> and <span class="mono">normalizeErrorText</span> functions from the source compute the signature as you type.</p>
+    </div>
+    <div class="lab">
+      <div class="lab-head">
+        <div class="dotrow"><i></i><i></i><i></i></div>
+        <span class="mono small" style="color:var(--ink-3)">flywheel · errorSignature(step)</span>
+      </div>
+      <div class="lab-body">
+        <div class="lab-in">
+          <div class="field">
+            <label for="errText">error output (stderr / tool result)</label>
+            <textarea id="errText" spellcheck="false"></textarea>
+          </div>
+          <div class="field">
+            <label for="cmdText">command that produced it (optional)</label>
+            <input type="text" id="cmdText" spellcheck="false" placeholder="python3 -c &quot;import yaml&quot;">
+          </div>
+          <div class="field">
+            <label>try a real one</label>
+            <div class="presets" id="presets"></div>
+          </div>
+        </div>
+        <div class="lab-out">
+          <div class="out-row">
+            <span class="lbl">detected error class</span>
+            <span class="classpill" id="outClass">—</span>
+          </div>
+          <div class="out-row">
+            <span class="lbl">agent-fixable?</span>
+            <span class="fault" id="outFault">—</span>
+          </div>
+          <div class="out-row">
+            <span class="lbl">scrubbed error text</span>
+            <pre class="codebox wrapy" id="outNorm" style="font-size:12px"></pre>
+          </div>
+          <div class="out-row">
+            <span class="lbl">cluster signature <span style="color:var(--ink-3)">· tool:class:cmdHead:salient</span></span>
+            <div class="sigbox" id="outSig"></div>
+          </div>
+          <p class="lab-note" id="labNote"></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ REPLAY ============ -->
+<section id="replay">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="eyebrow">the finding that reframes everything</div>
+      <h2>Witness replay only validates <span style="color:var(--green)">environmental</span> fixes.</h2>
+      <p class="lead">Replaying the failed command is a perfect oracle for one class of problem — and useless for another. This is the honest core of the project, and it's why "my agent self-improves" is usually an overclaim.</p>
+    </div>
+    <div class="replay-grid">
+      <div class="replay-card env">
+        <h3><span class="kind">environmental</span> the missing package</h3>
+        <p class="small" style="margin-top:10px">A script fails with <span class="mono">ModuleNotFoundError</span>. The fix — <span class="mono">pip install pyyaml</span> — changes the <i>environment</i>. Replay the exact command: it goes red → green. Trustworthy at n=1.</p>
+        <div class="replay-cmd">$ python3 -c "import yaml"</div>
+        <div class="bars">
+          <div class="bar"><span class="t">before</span><div class="track"><div class="fill red" data-w="100"></div></div><span class="v">fails</span></div>
+          <div class="bar"><span class="t">after</span><div class="track"><div class="fill green" data-w="100"></div></div><span class="v">passes</span></div>
+        </div>
+        <div class="replay-verdict ok">✓ helped: true — the environment changed, and the command proves it</div>
+      </div>
+      <div class="replay-card beh">
+        <h3><span class="kind">behavioural</span> the command that timed out</h3>
+        <p class="small" style="margin-top:10px">A long build times out. The fix — "run it in the background" — changes what the agent <i>does</i>, not the environment. Replay the same command and it just times out again. Replay can't see it.</p>
+        <div class="replay-cmd">$ node bin/flywheel.js measure … <span style="color:var(--indigo)"># 2m timeout</span></div>
+        <div class="bars">
+          <div class="bar"><span class="t">before</span><div class="track"><div class="fill red" data-w="100"></div></div><span class="v">fails</span></div>
+          <div class="bar"><span class="t">after</span><div class="track"><div class="fill red" data-w="100"></div></div><span class="v">fails</span></div>
+        </div>
+        <div class="replay-verdict blocked">◑ inconclusive — needs the statistical arm, not a replay</div>
+      </div>
+    </div>
+    <p class="small" style="margin-top:18px;max-width:76ch">The catch, stated plainly: <b>the fixes replay can verify cheaply are the ones that matter least.</b> Behavioural fixes — the failures that actually cluster — need a statistical arm run over many trials. Which leads to the one result this whole project exists to report honestly.</p>
+  </div>
+</section>
+
+<!-- ============ THE WALL / KC-6 ============ -->
+<section id="result">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="eyebrow">the pre-registered result · KC-6</div>
+      <h2>The mechanism works. That it moves the outcome is unproven.</h2>
+      <p class="lead">To prove a behavioural fix helps, you run the agent on many gold-labeled tasks, before and after, and beat the run-to-run noise. The math says n ≥ 60 for a 5-point effect. This is a wall you can't code past — only accumulate past.</p>
+    </div>
+    <div class="wall">
+      <div class="gold-meter">
+        <div class="top">
+          <div>
+            <div class="mono small" style="color:var(--ink-3);letter-spacing:.08em;text-transform:uppercase">gold labels accumulated</div>
+            <div class="big tnum">3<small> / 60</small></div>
+          </div>
+          <div class="mono small" style="color:var(--indigo)">wall-clock, not code</div>
+        </div>
+        <div class="meter-track"><div class="meter-fill" style="width:5%"></div></div>
+        <div class="meter-ticks"><span>0</span><span>15</span><span>30</span><span>45</span><span>60 · unlocks the statistical arm</span></div>
+        <p class="small" style="margin-top:16px">The agent factory on the Mac mini emits one episode→outcome tuple per merge decision, with a structured exit-code verdict. Reaching 60 is a multi-day wait — which is itself the finding: <b>if you want to learn from outcomes, you must record the episode→outcome link at decision time.</b> Bolting it on afterward doesn't work.</p>
+      </div>
+      <div class="finding-list">
+        <div class="finding"><b class="ok">✓ M0 · harvest</b><p>Real 440 MB / 610-file corpus → 921 episodes in ~2s.</p></div>
+        <div class="finding"><b class="ok">✓ M1 · the labeler is validated</b><p>Cross-checked against GitHub ground truth, it recovered 3 of 4 documented failures — and correctly refused to guess the 4th (a semantic defect invisible from exit codes).</p></div>
+        <div class="finding"><b class="ok">✓ M2 · the closed loop is proven</b><p>A recorded witness, replayed unchanged after the real cause was fixed, went red → green. A note that <i>couldn't</i> fix a missing package was reported helped:false.</p></div>
+        <div class="finding"><b class="wall-i">◑ M3 · the statistical arm is blocked, honestly</b><p>Not a bug — the pre-registered kill-criterion. Anyone claiming their self-improvement loop "works" without outcome-level stats on a held-out set is showing you the mechanism and calling it the outcome.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ WHAT COMPOUNDS ============ -->
+<section id="compounds">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="eyebrow">what keeps working after the demo</div>
+      <h2>A failure atlas that can't be built retroactively.</h2>
+      <p class="lead">The loop that closes is modest. The measurement asset underneath it is the thing that lasts — a live map of what an agent fleet gets wrong, regenerated every two hours on a growing corpus. Below: real clusters from the author's own traces, ranked exactly as the tool ranks them.</p>
+    </div>
+    <div class="atlas">
+      <table>
+        <thead><tr><th>rank</th><th>signature</th><th class="n">size</th><th class="n">gold+strong</th><th>proposable</th></tr></thead>
+        <tbody id="atlasBody"></tbody>
+      </table>
+    </div>
+    <p class="small" style="margin-top:14px;color:var(--ink-3)">The residual <span class="mono">longtail</span> bucket — the pile of singletons that don't cluster — sorts <i>last</i>, never above a real cluster. (That ordering was itself a bug found by running flywheel on its own build transcript.)</p>
+  </div>
+</section>
+
+<!-- ============ FOOTER ============ -->
+<footer class="foot">
+  <div class="wrap">
+    <div class="eyebrow">take it further</div>
+    <h2 style="margin-top:10px;max-width:18ch">Zero dependencies. MIT. Honestly documented — including what doesn't work.</h2>
+    <div class="foot-cta">
+      <a class="cta-btn p" href="https://github.com/abhid1234/flywheel">Read the code ↗</a>
+      <a class="cta-btn" href="https://github.com/abhid1234/flywheel/blob/main/FINDINGS.md">The full writeup ↗</a>
+      <a class="cta-btn" href="https://github.com/abhid1234/flywheel#install--run">Run it locally ↗</a>
+    </div>
+    <p class="foot-meta">
+      $ git clone https://github.com/abhid1234/flywheel && cd flywheel<br>
+      $ node --test&nbsp;&nbsp;&nbsp;<span style="color:var(--green)"># 218 tests, zero deps</span><br>
+      $ node bin/flywheel.js harvest ~/.claude/projects --out ~/.flywheel<br><br>
+      Built primarily by Codex (gpt-5.6-sol), specified and independently verified chunk by chunk.<br>
+      Composes three zero-dep packages: selfpatch (gate) · truecall (oracle) · provenant (ledger).
+    </p>
+  </div>
+</footer>
+
+<script>
+/* ============================================================
+   1. PORTED PIPELINE LOGIC — faithful copies of the real source
+      (src/harvest/normalize.js + signature.js). The Signature Lab
+      below computes exactly what the tool computes.
+   ============================================================ */
+const CLASS_MATCHERS = [
+  ["user_rejected", [/The user doesn't want to proceed with this tool use/i, /tool use was rejected/i]],
+  ["tool_unavailable", [/No such tool available:/i, /tool exists but is not enabled in this context/i]],
+  ["harness_blocked", [/^Blocked:\s+([^\s:]+)/m]],
+  ["harness_precondition", [/File has not been read yet\. Read it first before writing to it\./i]],
+  ["stale_reference", [/Task\s+\S+\s+is not running\s*\(status:\s*completed\)/i]],
+  ["wrong_invocation", [/is a UI command, not a skill/i, /Ask the user to run \/[^\s]+ themselves/i]],
+  ["edit_no_match", [/String to replace not found/i, /oldString.*not found/i]],
+  ["module_not_found", [/ModuleNotFoundError:\s*No module named\s*['"]?([\w.\-]+)/i, /Cannot find module\s*['"]?([\w.\-/@]+)/i, /ImportError/i]],
+  ["command_not_found", [/([\w.\-]+):\s*command not found/i, /command not found:\s*([\w.\-]+)/i, /:\s*not found\s*$/im]],
+  ["file_not_found", [/File does not exist(?:\.|\b)/i, /ENOENT(?:[^\r\n]*?['"](?:[^'"/\\]*[/\\])*([^'"/\\]+)['"])?/i, /No such file or directory(?:[^\r\n]*?['"](?:[^'"/\\]*[/\\])*([^'"/\\]+)['"])?/i]],
+  ["permission", [/EACCES/i, /EPERM/i, /Permission denied/i]],
+  ["test_failure", [/(\d+)\s+(?:tests?|specs?)\s+failed/i, /^# fail\s+(\d+)/im, /AssertionError/i, /FAIL\s/i]],
+  ["shell_syntax", [/unexpected EOF/i, /unexpected end of file/i, /syntax error near/i]],
+  ["type_error", [/TS(\d{4})/i, /TypeError/i]],
+  ["syntax_error", [/SyntaxError/i, /ParseError/i, /unexpected token/i]],
+  ["runtime_error", [/Traceback \(most recent call last\)[\s\S]*?\b(\w+Error): /, /Traceback \(most recent call last\)/, /(\w+Error): /, /^\s*at .+ \(.+:\d+:\d+\)/m]],
+  ["usage_error", [/^usage:\s*([^\s[]+)/im, /(?:^|\n)([\w.\-]+): (?:illegal|invalid) option/im]],
+  ["network", [/ENOTFOUND/i, /ECONNREFUSED/i, /ETIMEDOUT/i, /getaddrinfo/i]],
+  ["git_conflict", [/CONFLICT/i, /merge conflict/i, /non-fast-forward/i]],
+  ["timeout", [/timed out/i, /Command timed out/i]],
+  ["lint", [/eslint/i, /prettier/i, /lint error/i]],
+];
+const NON_FAULT = new Set(["user_rejected","tool_unavailable","stale_reference"]);
+
+function classifyError(text){
+  if(typeof text!=="string") return {errorClass:"other",salient:""};
+  for(const [errorClass,matchers] of CLASS_MATCHERS){
+    for(const m of matchers){
+      const match=m.exec(text);
+      if(match) return {errorClass, salient:(match[1]||"").toLowerCase()};
+    }
+  }
+  return {errorClass:"other",salient:""};
+}
+function normalizeErrorText(s){
+  if(typeof s!=="string") return "";
+  return s
+    .replace(/\/Users\/[^/\s]+/g,"~")
+    .replace(/(?:\/[\w.@%+,:=~-]+)+/g,"<PATH>")
+    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi,"<UUID>")
+    .replace(/\b[0-9a-f]{8,}\b/gi,"<HASH>")
+    .replace(/\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\b/g,"<TS>")
+    .replace(/\b\d{3,}\b/g,"<N>")
+    .replace(/\s+/g," ")
+    .trim();
+}
+function commandSegments(command){
+  const segments=[];let start=0,quote="";
+  for(let i=0;i<command.length;i++){
+    const char=command[i];
+    if(quote){ if(char==="\\"&&quote==='"')i++; else if(char===quote)quote=""; continue; }
+    if(char==='"'||char==="'"){quote=char;continue;}
+    const pair=command.slice(i,i+2);
+    if(char===";"||char==="|"||pair==="&&"){ segments.push(command.slice(start,i)); i+=(pair==="&&"||pair==="||")?1:0; start=i+1; }
+  }
+  segments.push(command.slice(start));
+  return segments;
+}
+function normalizeCommand(cmd){
+  try{
+    if(typeof cmd!=="string") return "";
+    let command=cmd;
+    while(/^\s*[A-Z_][A-Z0-9_]*=\S+\s+/.test(command)) command=command.replace(/^\s*[A-Z_][A-Z0-9_]*=\S+\s+/,"");
+    command=command.replace(/^\s*sudo(?:\s+|$)/,"");
+    command=command.replace(/(?:\d+)?(?:>>?|<<?|>&)\s*(?:&\d+|[^\s;&|]+)|&>\s*[^\s;&|]+/g,"");
+    const segments=commandSegments(command).map(s=>s.trim()).filter(Boolean);
+    const useful=segments.find(s=>!/^cd(?:\s|$)/.test(s));
+    const selected=useful??(segments.some(s=>/^cd(?:\s|$)/.test(s))?"cd":"");
+    return selected.trim().replace(/;+\s*$/,"").trim();
+  }catch{return "";}
+}
+function scrubHead(head){
+  return head
+    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi,"<UUID>")
+    .replace(/~\/(?:[^\s]+)?/g,"<PATH>")
+    .replace(/(?:\/[\w.@%+,:=~-]+)+/g,"<PATH>")
+    .replace(/\b[0-9a-f]{8,}\b/gi,"<HASH>")
+    .replace(/\b\d+\b/g,"<N>");
+}
+function shellTokens(command){
+  const tokens=[];const pattern=/"(?:\\.|[^"\\])*"|'[^']*'|[^\s]+/g;let match;
+  while((match=pattern.exec(command))!==null){
+    const raw=match[0];
+    tokens.push({value:raw.replace(/^(['"])([\s\S]*)\1$/,"$2"),quoted:/^["']/.test(raw)});
+  }
+  return tokens;
+}
+function cmdHeadBash(command){
+  if(typeof command!=="string") return "";
+  const tokens=shellTokens(normalizeCommand(command));
+  const argv=[];
+  for(let i=0;i<tokens.length&&argv.length<2;i++){
+    const t=tokens[i];
+    if(t.value.startsWith("-")){ if(t.value==="-c")i++; continue; }
+    argv.push(t.value);
+  }
+  return scrubHead(argv.join(" "));
+}
+
+/* ============================================================
+   2. SIGNATURE LAB
+   ============================================================ */
+const PRESETS=[
+  {name:"module_not_found", err:`Traceback (most recent call last):\n  File "app.py", line 2, in <module>\n    import yaml\nModuleNotFoundError: No module named 'yaml'`, cmd:`python3 -c "import yaml"`},
+  {name:"command_not_found", err:`bash: line 1: pnpm: command not found`, cmd:`pnpm install`},
+  {name:"file_not_found", err:`ls: /Users/abhi/Developer/flywheel/dist: No such file or directory`, cmd:`ls ~/Developer/flywheel/dist`},
+  {name:"test_failure", err:`# tests 218\n# pass 216\n# fail 2\nAssertionError [ERR_ASSERTION]: expected 3 to equal 4`, cmd:`node --test`},
+  {name:"timeout", err:`Command timed out after 2m0.0s`, cmd:`node bin/flywheel.js measure --replay-witness`},
+  {name:"harness_blocked (sleep)", err:`Blocked: sleep — foreground sleep is not permitted in this environment`, cmd:`sleep 30 && curl localhost:3000`},
+  {name:"git_conflict", err:`CONFLICT (content): Merge conflict in src/report/atlas.js\nAutomatic merge failed; fix conflicts and then commit the result.`, cmd:`git merge origin/main`},
+  {name:"user_rejected (not a fault)", err:`The user doesn't want to proceed with this tool use. The tool use was rejected.`, cmd:`rm -rf build/`},
+];
+const NOTES={
+  module_not_found:"A textbook environmental failure — the fix changes the environment, so witness replay can verify it red → green.",
+  command_not_found:"Environmental: a missing binary. Install it, replay the command, done.",
+  file_not_found:"Often environmental, sometimes behavioural (the agent should have checked the path first). The signature tells you it recurs; the witness tells you if replay can judge it.",
+  test_failure:"A real defect signal — deterministic and terminal. This is exactly the kind of failure that earns a 'strong' trust tier.",
+  timeout:"Behavioural. The fix is 'run it in the background' — which replay can't validate, because the command will just time out again. This is the hard case.",
+  harness_blocked:"The harness refused the action. An agent-fixable behaviour: stop reaching for sleep. Note it clusters cleanly.",
+  git_conflict:"Behavioural — the agent's branch drifted. Recurs across sessions; the scrubbed signature collapses them into one cluster.",
+  user_rejected:"NOT an agent fault. A person declined the tool. flywheel refuses to treat this as a defect to 'fix' — that guard keeps the loop from patching the agent's response to human choices.",
+};
+function esc(s){return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+
+function runLab(flash){
+  const err=document.getElementById("errText").value;
+  const cmd=document.getElementById("cmdText").value;
+  const {errorClass,salient}=classifyError(err);
+  const norm=normalizeErrorText(err);
+  const head=cmd.trim()?cmdHeadBash(cmd):"";
+  const tool=cmd.trim()?"bash":"";
+  const sig=`${tool}:${errorClass}:${head}:${salient}`;
+
+  document.getElementById("outClass").textContent=errorClass;
+  const faultEl=document.getElementById("outFault");
+  const isFault=!NON_FAULT.has(errorClass)&&errorClass!=="other";
+  if(errorClass==="other"){ faultEl.textContent="unclassified"; faultEl.className="fault"; }
+  else if(isFault){ faultEl.textContent="✓ yes — a defect the agent could fix"; faultEl.className="fault yes"; }
+  else{ faultEl.textContent="✕ no — not an agent fault, never proposed against"; faultEl.className="fault no"; }
+
+  document.getElementById("outNorm").textContent=norm||"(empty)";
+
+  const parts=sig.split(":");
+  const [pt="",pc="",ph="",ps=""]=parts;
+  document.getElementById("outSig").innerHTML=
+    `<span class="p-tool">${esc(pt)}</span><span class="p-sep">:</span>`+
+    `<span class="p-cls">${esc(pc)}</span><span class="p-sep">:</span>`+
+    `<span class="p-head">${esc(ph)}</span><span class="p-sep">:</span>`+
+    `<span class="p-sal">${esc(ps)}</span>`;
+
+  document.getElementById("labNote").textContent=NOTES[errorClass]||"Unrecognized shape → class 'other'. It still gets a signature and can be triaged, but it won't drive a proposal until it clusters with trusted labels.";
+
+  if(flash){ const b=document.getElementById("outSig"); b.classList.remove("flash"); void b.offsetWidth; b.classList.add("flash"); }
+}
+(function initLab(){
+  const wrap=document.getElementById("presets");
+  PRESETS.forEach((p,i)=>{
+    const c=document.createElement("button");
+    c.className="chip";c.type="button";c.textContent=p.name;
+    c.addEventListener("click",()=>{
+      document.getElementById("errText").value=p.err;
+      document.getElementById("cmdText").value=p.cmd;
+      runLab(true);
+    });
+    wrap.appendChild(c);
+  });
+  document.getElementById("errText").addEventListener("input",()=>runLab(false));
+  document.getElementById("cmdText").addEventListener("input",()=>runLab(false));
+  // seed with the canonical example
+  document.getElementById("errText").value=PRESETS[0].err;
+  document.getElementById("cmdText").value=PRESETS[0].cmd;
+  runLab(false);
+})();
+
+/* ============================================================
+   3. PIPELINE STEPPER
+   ============================================================ */
+const STAGES=[
+  {key:"harvest",verb:"stage 01 · harvest",name:"Harvest",tag:"Raw transcript → a structured episode digest.",
+   what:"The raw agent transcript is segmented into episodes by promptId (98.4% coverage on real data). Each tool call is joined to its result; exit codes and tool-level errors are parsed into a compact digest — not the full transcript.",
+   why:"An episode is the unit of learning. The digest caps error text and computes the error signature at extract time, so everything downstream is a cheap GROUP BY instead of a re-parse.",
+   inLbl:"raw transcript step",outLbl:"episode digest",
+   in:`{"type":"tool_result",\n "tool":"Bash",\n "is_error":true,\n "content":"Traceback (most recent\n   call last): ...\n  ModuleNotFoundError:\n  No module named 'yaml'"}`,
+   out:`{"id":"ep_sha256:9f3c…",\n "prompt_id":"e41b…",\n "cwd":"~/proj/etl",\n "steps":[{"tool":"Bash",\n   "ok":<c-red>false</c-red>,"exit_code":<c-red>1</c-red>,\n   "error_class":"module_not_found"}]}`},
+  {key:"label",verb:"stage 02 · label",name:"Label",tag:"Assign a trust tier — and refuse to overreach.",
+   what:"The episode is labeled: errored, and the same signature was never recovered later in the episode. That earns a 'strong' tier — a deterministic, terminal failure. tier is a required, non-defaulting field.",
+   why:"Trust tiers are structural, not advisory. A weak proxy signal can never silently become training signal, because a record without a real tier fails validation outright.",
+   inLbl:"episode",outLbl:"labeled outcome",
+   in:`steps:[{ ok:<c-red>false</c-red>,\n  error_class:"module_not_found",\n  recovered_later:<c-red>false</c-red> }]`,
+   out:`outcome:{\n  label:"<c-red>fail</c-red>",\n  tier:"<c-str>strong</c-str>",\n  method:"unrecovered_terminal",\n  evidence:["exit_code=1"] }`},
+  {key:"cluster",verb:"stage 03 · cluster",name:"Cluster",tag:"Group identical failures. No embeddings.",
+   what:"Failures are grouped by exact signature, then near-identical ones merge (token-set Jaccard ≥ 0.8, same tool + class). Machine error text is already near-canonical — embeddings would buy nothing and cost a network dependency.",
+   why:"A cluster with size ≥ 3, ≥ 3 gold/strong labels, and at least one replayable witness is 'proposable'. Everything else is triage-only. Recurrence is the signal that a fix is worth the risk.",
+   inLbl:"labeled failures",outLbl:"cluster",
+   in:`"bash:module_not_found:python3:yaml"\n"bash:module_not_found:python3:yaml"\n"bash:module_not_found:pytest:yaml"`,
+   out:`cluster:{\n  signature:"bash:module_not_found:…:yaml",\n  size:<c-str>4</c-str>, gold_strong:<c-str>4</c-str>,\n  witnesses:<c-str>1 replayable</c-str>,\n  proposable:<c-green>true</c-green> }`},
+  {key:"propose",verb:"stage 04 · propose",name:"Propose",tag:"The model writes the fix. Not the test.",
+   what:"A deterministic brief goes to the model, which proposes an edit — e.g. add pyyaml to requirements. The edit's anchor must appear verbatim exactly once in the target file, or it's rejected. The eval contract is built from the witness, not the model.",
+   why:"This is the one rule in code. The model can propose anything; it cannot author the criterion that grades it. The success test is the recorded command that failed.",
+   inLbl:"brief + witness",outLbl:"proposal + eval contract",
+   in:`brief: "module_not_found: yaml,\n  recurs 4×, witness present"\nwitness: python3 -c "import yaml"`,
+   out:`edit:{ file:"requirements.txt",\n  before:"pyyaml? <c-red>absent</c-red>", after:"pyyaml" }\ncontract:{ replay:<c-str>witness</c-str>,\n  pass_if:"exit 0", <c-ind>authored_by:"failure"</c-ind> }`},
+  {key:"gate",verb:"stage 05 · gate",name:"Gate",tag:"Every self-edit is gated and revertible.",
+   what:"selfpatch gates the patch: it blocks edits to secrets and settings.json, confirms the anchor is unique, and snapshots for revert. The gate runs the eval before AND after applying.",
+   why:"A self-modifying loop that can't be reverted is a liability, not a feature. The gate is a borrowed, already-tested package — flywheel composes safety machinery rather than reinventing it.",
+   inLbl:"proposal",outLbl:"gate verdict",
+   in:`patch → selfpatch.gate(policy: flywheel)\n  · target: requirements.txt\n  · anchor unique? ✓\n  · touches secrets/settings? ✗`,
+   out:`gate:{\n  decision:"<c-green>approve</c-green>",\n  anchor_ok:<c-green>true</c-green>,\n  revert_snapshot:"snap_7c1…",\n  ran_before_and_after:<c-green>true</c-green> }`},
+  {key:"measure",verb:"stage 06 · measure",name:"Measure",tag:"Replay the witness. Red → green, or nothing.",
+   what:"The deterministic arm re-runs the recorded witness in its recorded cwd. Before the fix: exit 1 (red). After: exit 0 (green). Variance ≈ 0 — a command, not an agent run.",
+   why:"This is the falsifiable claim. The improvement isn't asserted; it's demonstrated by the exact failure disappearing. For behavioural clusters with no replayable witness, this arm honestly reports inconclusive.",
+   inLbl:"witness replay",outLbl:"measurement",
+   in:`replay before:  python3 -c "import yaml"\n  → exit <c-red>1</c-red>  <c-red>(red)</c-red>\nreplay after:   python3 -c "import yaml"\n  → exit <c-green>0</c-green>  <c-green>(green)</c-green>`,
+   out:`measure:{\n  before:"<c-red>red</c-red>", after:"<c-green>green</c-green>",\n  helped:<c-green>true</c-green>,\n  arm:"deterministic", variance:"~0" }`},
+  {key:"attest",verb:"stage 07 · attest",name:"Attest",tag:"Write it to an append-only ledger.",
+   what:"provenant records an attestation: what was fixed, what it derived from (the episode ids), and the checks that passed — as a hash-linked entry. The ledger's chain can be independently verified.",
+   why:"The compounding asset. Every applied fix is a permanent, verifiable record of a red→green improvement — the audit trail that lets a self-improving loop be trusted at all.",
+   inLbl:"verified fix",outLbl:"ledger attestation",
+   in:`attest({\n  artifact:{hash:"9f3c…"},\n  derived_from:[ep ids],\n  checks:[{name:"witness",passed:<c-green>true</c-green>}] })`,
+   out:`ledger.jsonl ← append\n{ id:"att_5d2…", prev:"att_4a1…",\n  verified:<c-green>true</c-green>,\n  chain:"<c-green>valid</c-green>" }  <c-c-key>// verifyChain() ✓</c-c-key>`},
+];
+let cur=0, maxSeen=0;
+function colorize(s){
+  return esc(s)
+    .replace(/&lt;c-red&gt;([\s\S]*?)&lt;\/c-red&gt;/g,'<span class="c-red">$1</span>')
+    .replace(/&lt;c-green&gt;([\s\S]*?)&lt;\/c-green&gt;/g,'<span class="c-green">$1</span>')
+    .replace(/&lt;c-str&gt;([\s\S]*?)&lt;\/c-str&gt;/g,'<span class="c-str">$1</span>')
+    .replace(/&lt;c-ind&gt;([\s\S]*?)&lt;\/c-ind&gt;/g,'<span class="c-ind">$1</span>')
+    .replace(/&lt;c-c-key&gt;([\s\S]*?)&lt;\/c-c-key&gt;/g,'<span class="c-key">$1</span>');
+}
+function buildRail(){
+  const rail=document.getElementById("rail");
+  STAGES.forEach((s,i)=>{
+    const b=document.createElement("button");
+    b.className="rail-node";b.setAttribute("role","tab");b.dataset.i=i;
+    b.innerHTML=`<span class="dot"></span><div class="idx">0${i+1}</div><div class="nm">${s.key}</div>`;
+    b.addEventListener("click",()=>go(i));
+    rail.appendChild(b);
+  });
+}
+function renderStage(){
+  const s=STAGES[cur];
+  document.getElementById("sVerb").textContent=s.verb;
+  document.getElementById("sName").textContent=s.name;
+  document.getElementById("sTag").textContent=s.tag;
+  document.getElementById("sWhat").textContent=s.what;
+  document.getElementById("sWhy").textContent=s.why;
+  document.getElementById("inLbl").textContent=s.inLbl;
+  document.getElementById("outLbl").textContent=s.outLbl;
+  document.getElementById("sIn").innerHTML=colorize(s.in);
+  document.getElementById("sOut").innerHTML=colorize(s.out);
+  document.getElementById("stepCount").textContent=`${cur+1} / ${STAGES.length}`;
+  document.getElementById("prevBtn").disabled=cur===0;
+  const next=document.getElementById("nextBtn");
+  next.textContent=cur===STAGES.length-1?"↻ start over":"step forward →";
+  document.querySelectorAll(".rail-node").forEach((n,i)=>{
+    n.setAttribute("aria-selected",i===cur?"true":"false");
+    n.dataset.done=i<=maxSeen?"true":"false";
+  });
+  drawFlywheel((maxSeen+1)/STAGES.length);
+}
+function go(i){ cur=i; maxSeen=Math.max(maxSeen,i); renderStage(); }
+function initStepper(){
+  buildRail();
+  document.getElementById("nextBtn").addEventListener("click",()=>{
+    if(cur===STAGES.length-1){cur=0;} else {cur++;}
+    maxSeen=Math.max(maxSeen,cur);renderStage();
+  });
+  document.getElementById("prevBtn").addEventListener("click",()=>{ if(cur>0){cur--;renderStage();} });
+  renderStage();
+}
+
+/* ============================================================
+   4. FLYWHEEL CANVAS (hero + brandmark + progress-linked)
+   ============================================================ */
+function brass(){ return getComputedStyle(document.documentElement).getPropertyValue('--brass').trim()||'#a67c22'; }
+function inkline(){ return getComputedStyle(document.documentElement).getPropertyValue('--line-2').trim()||'#bcc6cf'; }
+function drawDisk(cv,angle,fill){
+  const ctx=cv.getContext("2d");const w=cv.width,h=cv.height,cx=w/2,cy=h/2,R=Math.min(w,h)/2-6;
+  ctx.clearRect(0,0,w,h);
+  ctx.save();ctx.translate(cx,cy);ctx.rotate(angle);
+  const b=brass();
+  // outer rim
+  ctx.lineWidth=Math.max(2,R*0.06);ctx.strokeStyle=b;ctx.globalAlpha=.9;
+  ctx.beginPath();ctx.arc(0,0,R,0,Math.PI*2);ctx.stroke();
+  // spokes
+  const spokes=8;ctx.globalAlpha=.55;ctx.lineWidth=Math.max(1.5,R*0.035);
+  for(let i=0;i<spokes;i++){const a=(i/spokes)*Math.PI*2;
+    ctx.beginPath();ctx.moveTo(Math.cos(a)*R*0.2,Math.sin(a)*R*0.2);ctx.lineTo(Math.cos(a)*R*0.86,Math.sin(a)*R*0.86);ctx.stroke();}
+  // notches (engraved tick marks)
+  ctx.globalAlpha=.9;ctx.lineWidth=Math.max(1,R*0.02);
+  const notches=48;
+  for(let i=0;i<notches;i++){const a=(i/notches)*Math.PI*2;const r1=R*0.9,r2=R*0.98;
+    ctx.beginPath();ctx.moveTo(Math.cos(a)*r1,Math.sin(a)*r1);ctx.lineTo(Math.cos(a)*r2,Math.sin(a)*r2);ctx.stroke();}
+  // progress arc (energy stored)
+  if(fill!==undefined){ctx.globalAlpha=1;ctx.lineWidth=Math.max(3,R*0.09);ctx.strokeStyle=b;ctx.lineCap="round";
+    ctx.beginPath();ctx.arc(0,0,R*0.72,-Math.PI/2,-Math.PI/2+fill*Math.PI*2);ctx.stroke();}
+  // hub
+  ctx.globalAlpha=1;ctx.fillStyle=b;ctx.beginPath();ctx.arc(0,0,R*0.15,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--paper').trim()||'#fff';
+  ctx.beginPath();ctx.arc(0,0,R*0.06,0,Math.PI*2);ctx.fill();
+  ctx.restore();
+}
+let heroAngle=0, progFill=1/7, reduce=matchMedia("(prefers-reduced-motion:reduce)").matches;
+const heroCv=document.getElementById("flywheelCanvas");
+const markCv=document.getElementById("markCanvas");
+function drawFlywheel(f){ progFill=f; if(reduce){drawDisk(heroCv,0.15,f);} }
+function tick(){
+  heroAngle+=0.004;
+  drawDisk(heroCv,heroAngle,progFill);
+  drawDisk(markCv,heroAngle*1.4);
+  requestAnimationFrame(tick);
+}
+function paintStatic(){ drawDisk(heroCv,0.15,progFill); drawDisk(markCv,0.15); }
+
+/* ============================================================
+   5. REPLAY BARS + ATLAS + THEME
+   ============================================================ */
+function initReplay(){
+  const obs=new IntersectionObserver((entries)=>{
+    entries.forEach(e=>{ if(e.isIntersecting){ e.target.querySelectorAll(".fill").forEach(f=>{f.style.width=f.dataset.w+"%";}); obs.unobserve(e.target);} });
+  },{threshold:.4});
+  document.querySelectorAll(".replay-card").forEach(c=>obs.observe(c));
+}
+const ATLAS=[
+  {sig:"bash:other:git checkout:",size:24,gs:24,prop:true,spark:[3,5,8,6,9,12]},
+  {sig:"bash:file_not_found:echo === DIR ===:",size:15,gs:15,prop:true,spark:[2,3,3,5,7,8]},
+  {sig:"bash:other:cat <PATH>:",size:9,gs:9,prop:true,spark:[1,2,4,3,5,6]},
+  {sig:"bash:file_not_found:ls:",size:9,gs:9,prop:true,spark:[2,2,3,4,4,6]},
+  {sig:"bash:timeout:const path:",size:4,gs:4,prop:true,spark:[1,1,2,1,3,2]},
+  {sig:"bash:harness_blocked:sleep <N>:sleep",size:3,gs:3,prop:false,spark:[1,0,1,1,0,1]},
+  {sig:"longtail  (residual — sorts last)",size:21,gs:21,prop:false,spark:[4,4,3,5,4,6],tail:true},
+];
+function initAtlas(){
+  const tb=document.getElementById("atlasBody");
+  ATLAS.forEach((r,i)=>{
+    const tr=document.createElement("tr");
+    const mx=Math.max(...r.spark,1);
+    const spark=r.spark.map(v=>`<i style="height:${Math.max(2,Math.round(v/mx*18))}px${r.tail?';opacity:.4':''}"></i>`).join("");
+    tr.innerHTML=`<td class="n">${r.tail?'—':i+1}</td>`+
+      `<td class="sig" style="${r.tail?'color:var(--ink-3)':''}">${r.sig} <span class="spark" title="recurrence over recent ticks">${spark}</span></td>`+
+      `<td class="n">${r.size}</td><td class="n">${r.gs}</td>`+
+      `<td class="${r.prop?'prop-y':'prop-n'}">${r.prop?'✓ proposable':'✗ triage only'}</td>`;
+    tb.appendChild(tr);
+  });
+}
+function initTheme(){
+  const btn=document.getElementById("themeBtn");
+  btn.addEventListener("click",()=>{
+    const root=document.documentElement;
+    const cur=root.getAttribute("data-theme")||(matchMedia("(prefers-color-scheme:dark)").matches?"dark":"light");
+    root.setAttribute("data-theme",cur==="dark"?"light":"dark");
+    if(reduce)paintStatic();
+  });
+}
+
+/* ---- boot ---- */
+initStepper();
+initReplay();
+initAtlas();
+initTheme();
+if(reduce){ paintStatic(); } else { requestAnimationFrame(tick); }
+</script>
+</body>
+</html>

@@ -8,6 +8,8 @@ Zero dependencies. Pure core, thin CLI seam. Built to be honest about what it ca
 harvest → label → cluster → propose → gate → measure → attest → report
 ```
 
+> **▶ [Interactive playground](playground/index.html)** — step the real pipeline through a live failure, and paste your own errors into the Signature Lab (the actual `classifyError` / `normalizeErrorText` source, running in your browser). Open the file locally, or serve `playground/` via GitHub Pages.
+
 ---
 
 ## The one rule everything is built around
