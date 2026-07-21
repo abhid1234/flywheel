@@ -230,3 +230,57 @@ test("CLI measure rejects statistical strategies with exit 2", () => {
   assert.equal(result.status, 2);
   assert.match(result.stderr, /supports only witness_replay.*strategy recurrence_probe needs the statistical arm/);
 });
+
+test("CLI gold exits 2 with a clear message when gh is missing", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "flywheel-gold-"));
+  const episodes = path.join(root, "episodes");
+  const emptyPath = path.join(root, "empty-bin");
+  mkdirSync(episodes); mkdirSync(emptyPath);
+  writeFileSync(path.join(episodes, "demo.jsonl"), `${JSON.stringify({ id: "e1", outcome: { label: "pass", tier: "strong" } })}\n`);
+  const result = spawnSync(process.execPath, [new URL("../bin/flywheel.js", import.meta.url).pathname, "gold", "--in", episodes, "--repos", "owner/repo"], { cwd: root, encoding: "utf8", timeout: 5000, env: { ...process.env, PATH: emptyPath } });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /gh is missing or unavailable.*Install and authenticate GitHub CLI/);
+});
+
+test("CLI calibrate treats a consistently failing witness as stable", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "flywheel-calibrate-"));
+  const clusters = path.join(root, "clusters.json");
+  writeFileSync(clusters, JSON.stringify([{ witnesses: [{ replayable: true, cmd: `${JSON.stringify(process.execPath)} -e "process.exit(1)"`, cwd: root }] }]));
+  const result = runCli(["calibrate", "--witnesses", clusters, "--repeats", "3"], root);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /DETERMINISTIC A\/A/);
+  assert.match(result.stdout, /mean stability: 100\.00%/);
+  assert.match(result.stdout, /deterministic arm calibration-clean: yes/);
+  assert.match(result.stdout, /Agent-trial A\/A.*needs gold/);
+});
+
+test("CLI calibrate bounds slow witnesses and survives spawn errors", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "flywheel-calibrate-timeout-"));
+  const clusters = path.join(root, "clusters.json");
+  writeFileSync(clusters, JSON.stringify([{ witnesses: [
+    { replayable: true, cmd: `${JSON.stringify(process.execPath)} -e "process.exit(1)"`, cwd: root },
+    { replayable: true, cmd: `${JSON.stringify(process.execPath)} -e "setTimeout(() => {}, 30000)"`, cwd: root },
+    { replayable: true, cmd: "exit 1", cwd: path.join(root, "missing") },
+  ] }]));
+  const started = Date.now();
+  const result = spawnSync(process.execPath, [cli, "calibrate", "--witnesses", clusters, "--repeats", "2", "--timeout-ms", "500"], { cwd: root, encoding: "utf8", timeout: 15000 });
+  assert.ok(Date.now() - started < 15000);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /exit codes 1,1 — stable/);
+  assert.match(result.stdout, /exit codes 124,124 — stable timeout\(124\)/);
+  assert.match(result.stdout, /covered 3 \/ 3 witnesses \(budget\)/);
+  assert.match(result.stdout, /deterministic arm calibration-clean: yes/);
+});
+
+test("CLI calibrate skips recorded timeout witnesses by default", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "flywheel-calibrate-skip-"));
+  const clusters = path.join(root, "clusters.json");
+  writeFileSync(clusters, JSON.stringify([
+    { errorClass: "file_not_found", witnesses: [{ replayable: true, cmd: "exit 1", cwd: root }] },
+    { mode: "timeout", witnesses: [{ replayable: true, cmd: "sleep 30", cwd: root }] },
+  ]));
+  const result = runCli(["calibrate", "--witnesses", clusters, "--repeats", "2", "--timeout-ms", "500"], root);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /skipped 1 timeout witnesses/);
+  assert.match(result.stdout, /covered 1 \/ 1 witnesses \(budget\)/);
+});

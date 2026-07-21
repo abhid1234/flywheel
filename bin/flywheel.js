@@ -21,11 +21,15 @@ import { planLoop } from "../src/loop/orchestrate.js";
 import { buildAttestation } from "../src/loop/attest.js";
 import { flywheelPolicy } from "../src/loop/policy.js";
 import { canonicalize, sha256hex } from "../src/hash.js";
+import { goldFromMergeStatus } from "../src/label/merge_status.js";
+import { summarizeStability } from "../src/measure/calibrate.js";
 
 function fail(message, code = 1) { process.stderr.write(`flywheel: ${message}\n`); process.exitCode = code; }
 const USAGE = `Usage:
   flywheel harvest <projectsDir> --out <outDir> [--exclude-sidechains|--include-sidechains] [--limit N] [--quiet]
   flywheel label --in <episodesDir> --out <episodesDir>
+  flywheel gold --in <episodesDir> --repos <owner/repo,owner/repo> [--out <dir>]
+  flywheel calibrate --witnesses <clusterFileOrDir> [--repeats 20] [--timeout-ms 5000] [--max-witnesses 20] [--max-total-ms 60000] [--include-timeouts]
   flywheel clusters --in <episodesDir> [--min-size 3] [--top N] [--json]
   flywheel propose --cluster <signatureOrId> --in <episodesDir> --llm <codex|echo> [--out <file>] [--force-demo]
   flywheel measure --patch <patchFile> [--apply] [--runner node] [--keep]
@@ -64,6 +68,8 @@ function parseFlags(argv, valueFlags, booleanFlags) {
 function parseArgs(argv) {
   if (argv[0] === "harvest") return parseHarvest(argv);
   if (argv[0] === "label") return parseFlags(argv, new Map([["--in", "inDir"], ["--out", "outDir"]]), new Map());
+  if (argv[0] === "gold") return parseFlags(argv, new Map([["--in", "inDir"], ["--repos", "repos"], ["--out", "outDir"]]), new Map());
+  if (argv[0] === "calibrate") return parseFlags(argv, new Map([["--witnesses", "witnesses"], ["--repeats", "repeats"], ["--timeout-ms", "timeoutMs"], ["--max-witnesses", "maxWitnesses"], ["--max-total-ms", "maxTotalMs"]]), new Map([["--include-timeouts", "includeTimeouts"]]));
   if (argv[0] === "clusters") return parseFlags(argv, new Map([["--in", "inDir"], ["--min-size", "minSize"], ["--top", "top"]]), new Map([["--json", "json"]]));
   if (argv[0] === "propose") return parseFlags(argv, new Map([["--cluster", "cluster"], ["--in", "inDir"], ["--llm", "llm"], ["--out", "outFile"], ["--timeout", "timeout"]]), new Map([["--force-demo", "forceDemo"]]));
   if (argv[0] === "measure") return parseFlags(argv, new Map([["--patch", "patchFile"], ["--runner", "runner"]]), new Map([["--apply", "apply"], ["--keep", "keep"]]));
@@ -250,6 +256,105 @@ async function label(options) {
     labels[value] = (labels[value] ?? 0) + 1;
   }
   process.stdout.write(`tiers ${JSON.stringify(tiers)}\nlabels ${JSON.stringify(labels)}\n`);
+}
+
+async function gold(options) {
+  if (!options.inDir || !options.repos) throw new Error("gold requires --in <episodesDir> and --repos <owner/repo,owner/repo>");
+  const repos = options.repos.split(",").map((repo) => repo.trim()).filter(Boolean);
+  if (!repos.length) throw new Error("--repos must contain at least one owner/repo");
+  const outcomes = [];
+  for (const repo of repos) {
+    let result;
+    try { result = await runChild("gh", ["pr", "list", "--repo", repo, "--state", "all", "--json", "number,headRefName,state,mergedAt,createdAt"], 180000); }
+    catch (error) { fail(`cannot fetch merge status: gh is missing or unavailable (${error.message}). Install and authenticate GitHub CLI, then retry.`, 2); return; }
+    if (result.code !== 0) { fail(`cannot fetch merge status for ${repo}: gh is not authenticated or failed: ${result.stderr.trim() || `exit ${result.code}`}`, 2); return; }
+    let prs;
+    try { prs = JSON.parse(result.stdout); } catch { fail(`cannot fetch merge status for ${repo}: gh returned invalid JSON`, 2); return; }
+    for (const pr of Array.isArray(prs) ? prs : []) outcomes.push({ ...pr, repo, merged: Boolean(pr?.mergedAt) || pr?.state === "MERGED", closedUnmerged: pr?.state === "CLOSED" && !pr?.mergedAt });
+  }
+  const records = loadEpisodes(options.inDir);
+  const result = goldFromMergeStatus(records.map((record) => record.episode), outcomes);
+  records.forEach((record, index) => { record.episode = result.episodes[index]; });
+  writeEpisodeRecords(records, options.outDir ?? options.inDir);
+  process.stdout.write(`linked ${result.linked}\ngold pass ${result.goldPass}, fail ${result.goldFail}\ngold labels: ${result.linked} / 60 needed for the statistical floor\nunlinked ${result.unlinked}\n`);
+}
+
+function loadWitnesses(target) {
+  const resolved = path.resolve(target);
+  const files = statSync(resolved).isDirectory()
+    ? readdirSync(resolved).filter((name) => name.endsWith(".json")).map((name) => path.join(resolved, name)).sort()
+    : [resolved];
+  const values = files.flatMap((file) => { const value = readJson(file, "witness file"); return Array.isArray(value) ? value : [value]; });
+  const witnesses = [];
+  for (const value of values) {
+    if (value?.replayable === true) witnesses.push(value);
+    for (const witness of Array.isArray(value?.witnesses) ? value.witnesses : []) {
+      if (witness?.replayable === true) witnesses.push({ ...witness, errorClass: witness.errorClass ?? witness.mode ?? value.errorClass ?? value.mode });
+    }
+  }
+  return witnesses.filter((witness) => typeof witness?.cmd === "string" && witness.cmd.length > 0);
+}
+
+function replayWitness(witness, timeoutMs) {
+  return new Promise((resolve) => {
+    const windows = process.platform === "win32";
+    let child;
+    try {
+      child = spawn(windows ? "cmd" : "/bin/sh", windows ? ["/d", "/s", "/c", witness.cmd] : ["-c", witness.cmd], {
+        stdio: "ignore", detached: !windows,
+        ...(typeof witness.cwd === "string" && witness.cwd ? { cwd: witness.cwd } : {}),
+      });
+    } catch { resolve({ code: 1, spawnError: true }); return; }
+    let settled = false;
+    let timedOut = false;
+    const finish = (result) => { if (!settled) { settled = true; clearTimeout(timer); resolve(result); } };
+    const timer = setTimeout(() => {
+      timedOut = true;
+      try { if (!windows && child.pid) process.kill(-child.pid, "SIGKILL"); else child.kill("SIGKILL"); } catch { try { child.kill("SIGKILL"); } catch {} }
+    }, timeoutMs);
+    child.once("error", () => finish({ code: 1, spawnError: true }));
+    child.once("close", (code) => finish({ code: timedOut ? 124 : (code ?? 1), timedOut }));
+  });
+}
+
+async function calibrate(options) {
+  if (!options.witnesses) throw new Error("calibrate requires --witnesses <clusterFileOrDir>");
+  const repeats = options.repeats === undefined ? 20 : Number(options.repeats);
+  if (!Number.isInteger(repeats) || repeats < 2) throw new Error("--repeats must be an integer of at least 2");
+  const timeoutMs = options.timeoutMs === undefined ? 5000 : Number(options.timeoutMs);
+  const maxWitnesses = options.maxWitnesses === undefined ? 20 : Number(options.maxWitnesses);
+  const maxTotalMs = options.maxTotalMs === undefined ? 60000 : Number(options.maxTotalMs);
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1) throw new Error("--timeout-ms must be a positive integer");
+  if (!Number.isInteger(maxWitnesses) || maxWitnesses < 1) throw new Error("--max-witnesses must be a positive integer");
+  if (!Number.isInteger(maxTotalMs) || maxTotalMs < 1) throw new Error("--max-total-ms must be a positive integer");
+  const witnesses = loadWitnesses(options.witnesses);
+  if (!witnesses.length) throw new Error("no replayable witnesses found");
+  const timeoutWitnesses = options.includeTimeouts ? [] : witnesses.filter((witness) => witness.mode === "timeout" || witness.errorClass === "timeout");
+  const candidates = options.includeTimeouts ? witnesses : witnesses.filter((witness) => witness.mode !== "timeout" && witness.errorClass !== "timeout");
+  const perWitness = [];
+  const incompleteWitnesses = [];
+  const started = Date.now();
+  for (const [witnessIndex, witness] of candidates.entries()) {
+    if (witnessIndex >= maxWitnesses || Date.now() - started >= maxTotalMs) break;
+    const codes = [];
+    for (let index = 0; index < repeats; index += 1) {
+      const remaining = maxTotalMs - (Date.now() - started);
+      if (remaining <= 0) break;
+      const result = await replayWitness(witness, Math.min(timeoutMs, remaining));
+      codes.push(result.code);
+    }
+    if (codes.length === repeats) perWitness.push({ witness, codes, stable: codes.every((code) => code === codes[0]) });
+    else if (codes.length) incompleteWitnesses.push({ witness, codes });
+  }
+  const summary = summarizeStability(perWitness);
+  const stabilityValues = perWitness.map((entry) => entry.stable ? 1 : 0);
+  const stabilityMean = stabilityValues.length ? stabilityValues.reduce((sum, value) => sum + value, 0) / stabilityValues.length : 0;
+  const stabilitySd = stabilityValues.length < 2 ? 0 : Math.sqrt(stabilityValues.reduce((sum, value) => sum + ((value - stabilityMean) ** 2), 0) / (stabilityValues.length - 1));
+  process.stdout.write(`DETERMINISTIC A/A\n`);
+  if (timeoutWitnesses.length) process.stdout.write(`skipped ${timeoutWitnesses.length} timeout witnesses (use --include-timeouts to replay)\n`);
+  perWitness.forEach(({ witness, codes, stable }, index) => process.stdout.write(`witness ${index + 1}: exit codes ${codes.join(",")} — ${stable ? "stable" : "unstable"}${codes.every((code) => code === 124) ? " timeout(124)" : ""} — ${witness.cmd}\n`));
+  incompleteWitnesses.forEach(({ witness, codes }) => process.stdout.write(`incomplete witness: ${codes.length} / ${repeats} repeats before budget — ${witness.cmd}\n`));
+  process.stdout.write(`covered ${summary.witnesses} / ${candidates.length} witnesses (budget)\nmean stability: ${summary.cleanPct.toFixed(2)}%\nsd: ${(stabilitySd * 100).toFixed(2)}pp\ndeterministic arm calibration-clean: ${summary.witnesses > 0 && summary.unstable === 0 ? "yes" : "no"}\nAgent-trial A/A for behavioural fixes needs gold and is a separate, heavier run.\n`);
 }
 
 async function clusters(options) {
@@ -629,6 +734,8 @@ else {
     try {
       if (options.command === "harvest") await harvest(options);
       else if (options.command === "label") await label(options);
+      else if (options.command === "gold") await gold(options);
+      else if (options.command === "calibrate") await calibrate(options);
       else if (options.command === "clusters") await clusters(options);
       else if (options.command === "propose") await propose(options);
       else if (options.command === "measure") await measure(options);
