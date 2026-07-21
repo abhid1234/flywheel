@@ -41,13 +41,13 @@ function runCli(args, cwd) {
 test("CLI --help exits zero and lists every workflow command", () => {
   const result = runCli(["--help"]);
   assert.equal(result.status, 0, result.stderr);
-  for (const command of ["harvest", "label", "clusters", "propose", "gate", "measure", "gold", "calibrate", "loop", "status", "report"]) {
+  for (const command of ["harvest", "label", "clusters", "propose", "gate", "measure", "gold", "calibrate", "loop", "status", "report", "trend"]) {
     assert.match(result.stdout, new RegExp(`\\b${command}\\b`));
   }
 });
 
 test("CLI provides help with an example for every executable subcommand", () => {
-  for (const command of ["harvest", "label", "clusters", "propose", "measure", "gold", "calibrate", "loop", "status", "report", "version"]) {
+  for (const command of ["harvest", "label", "clusters", "propose", "measure", "gold", "calibrate", "loop", "status", "report", "trend", "version"]) {
     const result = runCli([command, "--help"]);
     assert.equal(result.status, 0, `${command}: ${result.stderr}`);
     assert.match(result.stdout, /^Usage:/);

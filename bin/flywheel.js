@@ -18,6 +18,7 @@ import { buildEvalContract } from "../src/propose/contract.js";
 import { toSelfPatch } from "../src/propose/assemble.js";
 import { resolveTargetPath, routeCluster } from "../src/propose/targets.js";
 import { buildAtlas, renderAtlasHtml } from "../src/report/atlas.js";
+import { buildTrend } from "../src/report/trend.js";
 import { planLoop } from "../src/loop/orchestrate.js";
 import { buildAttestation } from "../src/loop/attest.js";
 import { flywheelPolicy } from "../src/loop/policy.js";
@@ -42,6 +43,7 @@ const COMMAND_HELP = {
   loop: { description: "Plan or run the guarded improvement loop.", usage: "loop --in <episodesDir> [--llm codex|echo] [--mode auto|review|--human-review] [--target <path>] [--apply] [--max N] [--dry-run]", example: "flywheel loop --in .flywheel/episodes --llm echo --mode review" },
   status: { description: "Summarize episodes, proposals, and applied patches.", usage: "status --in <episodesDir>", example: "flywheel status --in .flywheel/episodes" },
   report: { description: "Generate an HTML failure atlas.", usage: "report --in <episodesDir> [--out atlas.html] [--open]", example: "flywheel report --in .flywheel/episodes --out atlas.html" },
+  trend: { description: "Show how the measured corpus compounds over time.", usage: "trend [--history <path>] [--json]", example: "flywheel trend --json" },
   version: { description: "Print the package name and version.", usage: "version", example: "flywheel version" },
 };
 const USAGE = `Usage: flywheel <command> [options]\n\nCommands:\n${Object.entries(COMMAND_HELP).map(([name, help]) => `  ${name.padEnd(10)} ${help.description} ${help.usage === name ? "" : `(${help.usage})`}`.trimEnd()).join("\n")}\n\n  gate       No standalone command; proposals are gated inside flywheel loop.\n\nRun flywheel <command> --help for command flags and an example.\n`;
@@ -91,6 +93,7 @@ function parseArgs(argv) {
   if (argv[0] === "propose") return parseFlags(argv, new Map([["--cluster", "cluster"], ["--in", "inDir"], ["--llm", "llm"], ["--target", "target"], ["--out", "outFile"], ["--timeout", "timeout"]]), new Map([["--force-demo", "forceDemo"]]));
   if (argv[0] === "measure") return parseFlags(argv, new Map([["--patch", "patchFile"], ["--runner", "runner"]]), new Map([["--apply", "apply"], ["--keep", "keep"]]));
   if (argv[0] === "report") return parseFlags(argv, new Map([["--in", "inDir"], ["--out", "outFile"]]), new Map([["--open", "open"]]));
+  if (argv[0] === "trend") return parseFlags(argv, new Map([["--history", "historyFile"]]), new Map([["--json", "json"]]));
   if (argv[0] === "loop") return parseFlags(argv, new Map([["--in", "inDir"], ["--llm", "llm"], ["--max", "max"], ["--mode", "mode"], ["--target", "target"]]), new Map([["--apply", "apply"], ["--dry-run", "dryRun"], ["--human-review", "humanReview"]]));
   if (argv[0] === "status") return parseFlags(argv, new Map([["--in", "inDir"]]), new Map());
   return null;
@@ -688,7 +691,8 @@ async function report(options) {
   if (!existsSync(clustersFile)) throw new Error(`missing clusters file: ${clustersFile}; run flywheel clusters --in ${options.inDir} first`);
   const clusterData = readJson(clustersFile, "clusters file");
   if (!Array.isArray(clusterData)) throw new Error(`clusters file must contain an array: ${clustersFile}`);
-  const atlas = buildAtlas(episodes, clusterData);
+  const historyFile = path.join(os.homedir(), ".flywheel", "history.jsonl");
+  const atlas = buildAtlas(episodes, clusterData, existsSync(historyFile) ? { historyRows: jsonl(historyFile) } : {});
   atlas.generatedAtNote = `Generated ${new Date().toISOString()}`;
   const outFile = path.resolve(options.outFile ?? "atlas.html");
   mkdirSync(path.dirname(outFile), { recursive: true });
@@ -701,6 +705,23 @@ async function report(options) {
     child.unref();
   }
   process.stdout.write(`${outFile}\n`);
+}
+
+function trend(options) {
+  const historyFile = path.resolve(options.historyFile ?? path.join(os.homedir(), ".flywheel", "history.jsonl"));
+  const rows = jsonl(historyFile);
+  if (!rows.length) {
+    process.stdout.write("No history yet — flywheel-tick populates it every run.\n");
+    return;
+  }
+  const result = buildTrend(rows);
+  if (options.json) {
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    return;
+  }
+  const { summary } = result;
+  process.stdout.write(`${summary.sparkline}\nspan: ${summary.spanDays.toFixed(1)} days\nepisodes: ${summary.totalEpisodes} total, +${summary.netNewEpisodes} net-new\nmean fail rate: ${(summary.meanFailRate * 100).toFixed(1)}%\n\ndate       | episodes | new | fail%\n-----------|----------|-----|------\n`);
+  for (const point of result.points) process.stdout.write(`${point.date} | ${String(point.episodes).padStart(8)} | ${String(point.newEpisodes).padStart(3)} | ${(point.failRate * 100).toFixed(1).padStart(5)}%\n`);
 }
 
 function labelInMemory(records) {
@@ -973,6 +994,7 @@ else {
       else if (options.command === "measure") await measure(options);
       else if (options.command === "trial-run") await trialRun(options);
       else if (options.command === "report") await report(options);
+      else if (options.command === "trend") trend(options);
       else if (options.command === "loop") await loop(options);
       else if (options.command === "status") await status(options);
     } catch (error) { fail(error.message); }
