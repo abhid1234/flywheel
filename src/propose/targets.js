@@ -12,6 +12,35 @@ const SCAFFOLDING = new Set(["permission", "timeout", "network"]);
 const HUMAN_SCAFFOLDING = new Set(["harness_precondition"]);
 const NON_AGENT_FAULT = new Set(["user_rejected", "tool_unavailable", "stale_reference"]);
 
+function joinPath(...parts) {
+  const absolute = String(parts[0] ?? "").startsWith("/");
+  const joined = parts
+    .map((part) => String(part).split("/").filter(Boolean))
+    .flat()
+    .join("/");
+  return absolute ? `/${joined}` : joined;
+}
+
+function normalizePath(value) {
+  const absolute = value.startsWith("/");
+  const segments = [];
+  for (const segment of value.split("/")) {
+    if (!segment || segment === ".") continue;
+    if (segment === "..") {
+      if (segments.length && segments.at(-1) !== "..") segments.pop();
+      else if (!absolute) segments.push(segment);
+    } else {
+      segments.push(segment);
+    }
+  }
+  return absolute ? `/${segments.join("/")}` : segments.join("/");
+}
+
+function resolvePath(base, value = "") {
+  const target = String(value);
+  return normalizePath(target.startsWith("/") ? target : joinPath(base, target));
+}
+
 function skillSurface(cluster) {
   const inferred = [cluster?.inferredSkill, cluster?.skillName, cluster?.skill, cluster?.tool]
     .find((value) => typeof value === "string" && value.trim() && !["bash", "shell", "mixed", "unknown"].includes(value.trim().toLowerCase()));
@@ -35,9 +64,8 @@ export function routeCluster(cluster) {
 export function resolveTargetPath(cluster, surface, { homeDir } = {}) {
   const cwd = typeof cluster?.dominantCwd === "string" && cluster.dominantCwd ? cluster.dominantCwd : null;
   const relative = String(surface ?? "");
-  if (cwd) return path.resolve(cwd, relative);
-  const home = path.resolve(String(homeDir ?? ""));
-  if (relative === "CLAUDE.md") return path.resolve(home, ".claude", relative);
-  return path.resolve(home, relative);
+  if (cwd) return resolvePath(resolvePath(process.cwd(), cwd), relative);
+  const home = resolvePath(process.cwd(), String(homeDir ?? ""));
+  if (relative === "CLAUDE.md") return resolvePath(home, joinPath(".claude", relative));
+  return resolvePath(home, relative);
 }
-import path from "node:path";
