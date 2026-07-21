@@ -22,7 +22,11 @@ export function rankClusters(clusters, weights = {}) {
     for (const key of Object.keys(DEFAULT_WEIGHTS)) safeWeights[key] = finite(weights?.[key], DEFAULT_WEIGHTS[key]);
     const totalProjects = Math.max(0, ...clusters.map((cluster) => finite(cluster?.span?.projects)));
     return clusters.map((cluster) => ({ ...cluster, priority: priority(cluster, safeWeights, totalProjects) }))
-      .sort((a, b) => b.priority - a.priority || finite(b.size) - finite(a.size)
+      // The longtail bucket is the residual pile of unclustered singletons, not a real
+      // cluster — its size is large by construction, so it must never compete on priority.
+      // Every other seam already excludes it (group append order, isReviewable, isProposable).
+      .sort((a, b) => (a.isLongTail === true) - (b.isLongTail === true)
+        || b.priority - a.priority || finite(b.size) - finite(a.size)
         || String(a.signature ?? "").localeCompare(String(b.signature ?? ""))
         || String(a.id ?? "").localeCompare(String(b.id ?? "")));
   } catch {

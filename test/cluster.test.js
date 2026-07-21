@@ -105,6 +105,27 @@ test("ranking ties have a total deterministic order", () => {
   assert.deepEqual(ranked.map((cluster) => cluster.signature), ["a", "b"]);
 });
 
+test("the longtail residual bucket never outranks a real cluster", () => {
+  // The synthetic longtail bucket aggregates every singleton that did not cluster,
+  // so its size is large by construction. It must not float above real clusters on
+  // priority — every other seam (group append order, isReviewable, isProposable)
+  // already treats isLongTail as "not a real cluster."
+  const real = { id: "cl_real", signature: "bash:timeout:x", size: 4, cost: { terminal: 4, wastedMs: 0 }, span: { projects: 2 }, tierCounts: { strong: 4 }, witnesses: [{ replayable: true }], isLongTail: false };
+  const tail = { id: "cl_longtail", signature: "longtail", size: 21, cost: { terminal: 21, wastedMs: 0 }, span: { projects: 3 }, tierCounts: { strong: 21 }, witnesses: [], isLongTail: true };
+  const ranked = rankClusters([tail, real]);
+  assert.equal(ranked[0].id, "cl_real");
+  assert.equal(ranked.at(-1).id, "cl_longtail");
+});
+
+test("multiple longtail buckets still sort after every real cluster", () => {
+  const real = { id: "cl_real", signature: "a", size: 3, cost: { terminal: 3, wastedMs: 0 }, span: { projects: 1 }, tierCounts: { strong: 3 }, witnesses: [], isLongTail: false };
+  const t1 = { id: "cl_t1", signature: "longtail", size: 40, cost: { terminal: 40, wastedMs: 0 }, span: { projects: 1 }, tierCounts: { strong: 40 }, witnesses: [], isLongTail: true };
+  const t2 = { id: "cl_t2", signature: "longtail", size: 30, cost: { terminal: 30, wastedMs: 0 }, span: { projects: 1 }, tierCounts: { strong: 30 }, witnesses: [], isLongTail: true };
+  const ranked = rankClusters([t1, real, t2]);
+  assert.equal(ranked[0].id, "cl_real");
+  assert.ok(ranked.slice(1).every((cluster) => cluster.isLongTail === true));
+});
+
 test("unknown-tier clusters cannot be proposed even when large and replayable", () => {
   const cluster = {
     size: 6,
