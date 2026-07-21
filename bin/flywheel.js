@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { appendFileSync, createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import process from "node:process";
 import os from "node:os";
 import path from "node:path";
@@ -25,6 +25,7 @@ import { canonicalize, sha256hex } from "../src/hash.js";
 import { goldFromMergeStatus } from "../src/label/merge_status.js";
 import { summarizeStability } from "../src/measure/calibrate.js";
 import { cmdHead } from "../src/harvest/signature.js";
+import { planTrials, scoreTrialResults } from "../src/measure/runner.js";
 
 function fail(message, code = 1) { process.stderr.write(`flywheel: ${message}\n`); process.exitCode = code; }
 const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
@@ -37,6 +38,7 @@ const COMMAND_HELP = {
   measure: { description: "Replay a witness to measure a candidate patch.", usage: "measure --patch <patchFile> [--apply] [--runner node] [--keep]", example: "flywheel measure --patch .flywheel/patches/cl_demo.json" },
   gold: { description: "Enrich outcomes with GitHub merge-status evidence.", usage: "gold --in <episodesDir> --repos <owner/repo,owner/repo> [--out <dir>]", example: "flywheel gold --in .flywheel/episodes --repos owner/repo" },
   calibrate: { description: "Check replay-witness stability with repeated runs.", usage: "calibrate --witnesses <clusterFileOrDir> [--repeats 20] [--timeout-ms 5000] [--max-witnesses 20] [--max-total-ms 60000] [--include-timeouts]", example: "flywheel calibrate --witnesses .flywheel/clusters.json --repeats 10" },
+  "trial-run": { description: "Run paired before/after agent trials for a cluster.", usage: "trial-run --cluster <sig|id> --in <dir> [--patch <file>] [--agent fake|codex|claude] [--repeats N] [--timeout-ms 60000] [--max-trials 40] [--budget-usd 2] [--out <file>]", example: "flywheel trial-run --cluster cl_demo --in .flywheel/episodes --agent fake" },
   loop: { description: "Plan or run the guarded improvement loop.", usage: "loop --in <episodesDir> [--llm codex|echo] [--mode auto|review|--human-review] [--target <path>] [--apply] [--max N] [--dry-run]", example: "flywheel loop --in .flywheel/episodes --llm echo --mode review" },
   status: { description: "Summarize episodes, proposals, and applied patches.", usage: "status --in <episodesDir>", example: "flywheel status --in .flywheel/episodes" },
   report: { description: "Generate an HTML failure atlas.", usage: "report --in <episodesDir> [--out atlas.html] [--open]", example: "flywheel report --in .flywheel/episodes --out atlas.html" },
@@ -84,6 +86,7 @@ function parseArgs(argv) {
   if (argv[0] === "promote") return parseFlags(argv, new Map([["--in", "inDir"]]), new Map());
   if (argv[0] === "gold") return parseFlags(argv, new Map([["--in", "inDir"], ["--repos", "repos"], ["--out", "outDir"]]), new Map());
   if (argv[0] === "calibrate") return parseFlags(argv, new Map([["--witnesses", "witnesses"], ["--repeats", "repeats"], ["--timeout-ms", "timeoutMs"], ["--max-witnesses", "maxWitnesses"], ["--max-total-ms", "maxTotalMs"]]), new Map([["--include-timeouts", "includeTimeouts"]]));
+  if (argv[0] === "trial-run") return parseFlags(argv, new Map([["--cluster", "cluster"], ["--in", "inDir"], ["--patch", "patchFile"], ["--agent", "agent"], ["--repeats", "repeats"], ["--timeout-ms", "timeoutMs"], ["--max-trials", "maxTrials"], ["--budget-usd", "budgetUsd"], ["--out", "outFile"]]), new Map());
   if (argv[0] === "clusters") return parseFlags(argv, new Map([["--in", "inDir"], ["--min-size", "minSize"], ["--top", "top"]]), new Map([["--json", "json"]]));
   if (argv[0] === "propose") return parseFlags(argv, new Map([["--cluster", "cluster"], ["--in", "inDir"], ["--llm", "llm"], ["--target", "target"], ["--out", "outFile"], ["--timeout", "timeout"]]), new Map([["--force-demo", "forceDemo"]]));
   if (argv[0] === "measure") return parseFlags(argv, new Map([["--patch", "patchFile"], ["--runner", "runner"]]), new Map([["--apply", "apply"], ["--keep", "keep"]]));
@@ -571,6 +574,109 @@ async function measure(options) {
   }
 }
 
+function applyTrialPatch(patch) {
+  if (!patch) return () => {};
+  if (patch?.diff?.format !== "before_after" || typeof patch?.diff?.before !== "string" || typeof patch?.diff?.after !== "string" || typeof patch?.target !== "string") {
+    throw new Error("trial patch must contain target and a before_after diff");
+  }
+  const target = path.resolve(patch.target);
+  const existed = existsSync(target);
+  const original = existed ? readFileSync(target, "utf8") : undefined;
+  const createsFile = patch?.meta?.creates_file === true || patch?.creates_file === true || (!existed && patch.diff.before === "");
+  if (!existed && !createsFile) throw new Error(`patch target does not exist: ${patch.target}`);
+  if (createsFile) {
+    if (existed) throw new Error(`create-new patch target already exists: ${patch.target}`);
+    mkdirSync(path.dirname(target), { recursive: true });
+    writeFileSync(target, patch.diff.after);
+    return () => { if (existsSync(target)) unlinkSync(target); };
+  }
+  const first = original.indexOf(patch.diff.before);
+  if (!patch.diff.before || first < 0 || original.indexOf(patch.diff.before, first + patch.diff.before.length) >= 0) {
+    throw new Error("patch anchor drifted: before text must occur verbatim exactly once");
+  }
+  writeFileSync(target, original.slice(0, first) + patch.diff.after + original.slice(first + patch.diff.before.length));
+  return () => writeFileSync(target, original);
+}
+
+async function runAgentTrial(agent, item, timeoutMs) {
+  const expectedSignature = item.trial.expectedSignature;
+  if (agent === "fake") {
+    return { completed: true, output: item.arm === "before" ? expectedSignature : "completed without the expected error" };
+  }
+  const command = agent === "codex" ? "codex" : "claude";
+  const args = agent === "codex"
+    ? ["exec", "--sandbox", "read-only", "--skip-git-repo-check", "-m", "gpt-5.6-sol", item.trial.prompt]
+    : ["-p", item.trial.prompt];
+  try {
+    const result = await runChild(command, args, timeoutMs, item.trial.cwd);
+    return { completed: result.code === 0, output: `${result.stdout}\n${result.stderr}`, code: result.code };
+  } catch (error) {
+    return { completed: false, output: error.message, timedOut: /timed out/i.test(error.message), spawnError: !/timed out/i.test(error.message) };
+  }
+}
+
+async function trialRun(options) {
+  if (!options.cluster || !options.inDir) throw new Error("trial-run requires --cluster and --in <episodesDir>");
+  const agent = options.agent ?? "fake";
+  if (!["fake", "codex", "claude"].includes(agent)) throw new Error("--agent must be fake, codex, or claude");
+  const numeric = (name, value, fallback, minimum, integer = true) => {
+    const number = value === undefined ? fallback : Number(value);
+    if (!Number.isFinite(number) || number < minimum || (integer && !Number.isInteger(number))) throw new Error(`${name} must be ${integer ? "an integer" : "a number"} of at least ${minimum}`);
+    return number;
+  };
+  const repeats = numeric("--repeats", options.repeats, 12, 1);
+  const timeoutMs = numeric("--timeout-ms", options.timeoutMs, 60_000, 1);
+  const maxTrials = numeric("--max-trials", options.maxTrials, 40, 0);
+  const budgetUsd = numeric("--budget-usd", options.budgetUsd, 2, 0, false);
+  const episodes = loadEpisodes(options.inDir).map((item) => item.episode);
+  const parent = path.dirname(path.resolve(options.inDir));
+  const allClusters = readJson(path.join(parent, "clusters.json"), "clusters file");
+  if (!Array.isArray(allClusters)) throw new Error("clusters file must contain an array");
+  const cluster = allClusters.find((item) => item?.id === options.cluster || item?.signature === options.cluster);
+  if (!cluster) throw new Error(`cluster not found: ${options.cluster}`);
+  const patch = options.patchFile ? readJson(path.resolve(options.patchFile), "patch") : undefined;
+  const plan = planTrials(cluster, episodes, patch, { repeats, timeoutMs, maxTrials, budgetUsd });
+  const perCallUsd = agent === "fake" ? 0 : 0.10;
+  const results = [];
+  let spentUsd = 0;
+  let stopped;
+  for (const item of plan.order) {
+    if (results.length >= plan.maxTrials) { stopped = "limit"; break; }
+    if (plan.budgetUsd <= 0 || spentUsd + perCallUsd > plan.budgetUsd) { stopped = "budget"; break; }
+    let restore = () => {};
+    try {
+      if (item.arm === "after" && patch) restore = applyTrialPatch(patch);
+      const result = await runAgentTrial(agent, item, plan.timeoutMs);
+      results.push({ ...result, arm: item.arm, repeat: item.repeat, trialId: item.trial.id, expectedSignature: item.trial.expectedSignature });
+      spentUsd += perCallUsd;
+    } finally { restore(); }
+  }
+  if (stopped) process.stdout.write(`stopped: ${stopped}\n`);
+  const score = scoreTrialResults(results, cluster, { seed: 42 });
+  const armStats = (arm) => {
+    const rows = results.filter((result) => result.arm === arm);
+    const passes = rows.filter((result) => {
+      const expected = String(result.expectedSignature ?? "");
+      return result.completed && (!expected || !String(result.output ?? "").includes(expected));
+    }).length;
+    return { passes, n: rows.length };
+  };
+  const before = armStats("before");
+  const after = armStats("after");
+  const record = { ts: new Date().toISOString(), command: "trial-run", cluster_id: cluster.id ?? null,
+    cluster_signature: cluster.signature, agent, verdict: score.verdict, delta: score.delta, ci95: score.ci95,
+    n: score.perTask.length, k: plan.repeats, executed: results.length, max_trials: plan.maxTrials,
+    budget_usd: plan.budgetUsd, estimated_spend_usd: spentUsd, bounds_hit: stopped ?? null, powered: score.powered };
+  appendFileSync(path.join(parent, "ledger.jsonl"), `${JSON.stringify(record)}\n`);
+  if (options.outFile) {
+    const outFile = path.resolve(options.outFile);
+    mkdirSync(path.dirname(outFile), { recursive: true });
+    writeFileSync(outFile, `${JSON.stringify({ plan, results, score, record }, null, 2)}\n`);
+  }
+  process.stdout.write(`before: ${before.passes}/${before.n} passed\nafter: ${after.passes}/${after.n} passed\ndelta: ${score.delta.toFixed(3)}\nCI95: [${score.ci95.lo.toFixed(3)}, ${score.ci95.hi.toFixed(3)}]\npowered: ${score.powered ? "yes" : "no"}\nverdict: ${score.verdict}\n`);
+  if (!score.powered) process.stdout.write(`n=${score.perTask.length}, underpowered; no statistical claim\n`);
+}
+
 async function report(options) {
   if (!options.inDir) throw new Error("report requires --in <episodesDir>");
   const records = loadEpisodes(options.inDir);
@@ -865,6 +971,7 @@ else {
       else if (options.command === "clusters") await clusters(options);
       else if (options.command === "propose") await propose(options);
       else if (options.command === "measure") await measure(options);
+      else if (options.command === "trial-run") await trialRun(options);
       else if (options.command === "report") await report(options);
       else if (options.command === "loop") await loop(options);
       else if (options.command === "status") await status(options);
