@@ -6,3 +6,4 @@ node_modules/
 BUILD-LOG.md
 OVERNIGHT.md
 .vercel
+.env*
