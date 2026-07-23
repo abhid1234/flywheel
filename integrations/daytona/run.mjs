@@ -26,7 +26,8 @@ import { homedir } from "node:os";
 import path from "node:path";
 
 function parseArgs(argv) {
-  const out = { task: "env-yaml", n: 12, concurrency: 4, out: path.join(homedir(), ".flywheel", "daytona") };
+  // Default concurrency 8 keeps us under the common 10-vCPU tier cap (1 vCPU/sandbox).
+  const out = { task: "env-yaml", n: 12, concurrency: 8, out: path.join(homedir(), ".flywheel", "daytona") };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === "--task") out.task = argv[++i];
@@ -78,21 +79,36 @@ async function main() {
   }
 
   const started = Date.now();
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  // Retry transient capacity errors (tier CPU cap, rate limits) with backoff+jitter
+  // so one throttled sandbox doesn't abort the whole run. Non-transient errors
+  // surface after the last attempt and mark the trial as not-completed (honest —
+  // the scorer counts an incomplete trial, never silently drops it).
+  const isTransient = (msg) => /CPU limit|rate limit|429|too many|capacity|temporarily/i.test(String(msg));
   const runArm = async (item) => {
-    const result = await backend.run(task.steps(item.arm), { timeoutMs: 120_000 });
-    const reproduced = task.reproducedFailure(result);
-    // Shape it exactly as flywheel's scorer expects: a "pass" is a completed trial
-    // whose output does NOT contain the failure signature. So we surface the
-    // signature into `output` iff the failure reproduced.
+    let lastErr;
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      try {
+        const result = await backend.run(task.steps(item.arm), { timeoutMs: 120_000 });
+        const reproduced = task.reproducedFailure(result);
+        // Shape it exactly as flywheel's scorer expects: a "pass" is a completed
+        // trial whose output does NOT contain the failure signature.
+        return {
+          arm: item.arm, repeat: item.repeat, trialId: item.trialId,
+          expectedSignature: task.signature, completed: true,
+          output: reproduced ? task.signature : "completed; failure did not reproduce",
+          reproduced, exitCode: result?.exitCode ?? null,
+        };
+      } catch (error) {
+        lastErr = error;
+        if (!isTransient(error?.message) || attempt === 3) break;
+        await sleep(1500 * (attempt + 1) + Math.floor(Math.random() * 500));
+      }
+    }
     return {
-      arm: item.arm,
-      repeat: item.repeat,
-      trialId: item.trialId,
-      expectedSignature: task.signature,
-      completed: true,
-      output: reproduced ? task.signature : "completed; failure did not reproduce",
-      reproduced,
-      exitCode: result?.exitCode ?? null,
+      arm: item.arm, repeat: item.repeat, trialId: item.trialId,
+      expectedSignature: task.signature, completed: false,
+      output: `trial error: ${lastErr?.message ?? "unknown"}`, reproduced: null, exitCode: null, spawnError: true,
     };
   };
   const raw = await pool(plan, args.concurrency, runArm);
@@ -107,7 +123,11 @@ async function main() {
   for (let r = 0; r < aaN; r += 1) aaPlan.push({ arm: "before", repeat: r, trialId: `${task.id}#aa${r}` });
   const aaA = await pool(aaPlan, args.concurrency, runArm);
   const aaB = await pool(aaPlan, args.concurrency, (it) => runArm({ ...it, trialId: it.trialId }));
-  const aaDeltas = aaA.map((a, i) => (aaB[i].reproduced ? 0 : 1) - (a.reproduced ? 0 : 1)).map(Math.abs).sort((x, y) => x - y);
+  const aaDeltas = aaA
+    .map((a, i) => ({ a, b: aaB[i] }))
+    .filter(({ a, b }) => a.completed && b.completed) // only completed A/A pairs count
+    .map(({ a, b }) => Math.abs((b.reproduced ? 0 : 1) - (a.reproduced ? 0 : 1)))
+    .sort((x, y) => x - y);
   const band95 = aaDeltas.length ? aaDeltas[Math.min(aaDeltas.length - 1, Math.ceil(0.95 * aaDeltas.length) - 1)] : 0;
   const elapsed = ((Date.now() - started) / 1000).toFixed(1);
 
@@ -115,10 +135,11 @@ async function main() {
   const score = scoreTrialResults(raw, { signature: task.signature }, { seed: 42, noiseBand: band95 });
 
   const armRate = (arm) => {
-    const rows = raw.filter((r) => r.arm === arm);
+    const rows = raw.filter((r) => r.arm === arm && r.completed); // incomplete trials excluded
     const reproduced = rows.filter((r) => r.reproduced).length;
     return { reproduced, n: rows.length, failRate: rows.length ? reproduced / rows.length : 0 };
   };
+  const incomplete = raw.filter((r) => !r.completed).length;
   const before = armRate("before");
   const after = armRate("after");
 
@@ -166,6 +187,7 @@ async function main() {
     `CI95: [${score.ci95.lo.toFixed(3)}, ${score.ci95.hi.toFixed(3)}]\n` +
     `powered: ${score.powered ? "yes" : "no"}\n` +
     `verdict: ${score.verdict}${score.verdict === "helped" ? "  ✓ effect clears the measured noise floor" : ""}\n\n` +
+    `${incomplete ? `⚠ ${incomplete} trial(s) did not complete (excluded from scoring)\n` : ""}` +
     `${raw.length} gold episodes -> ${goldPath}\n` +
     `report -> ${path.join(args.out, "last-run.json")}\n` +
     `elapsed: ${elapsed}s on ${backend.kind} backend\n`
