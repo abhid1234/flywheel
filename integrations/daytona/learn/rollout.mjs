@@ -30,11 +30,27 @@ export async function rolloutTask(backend, agent, task, lessons, { K = 5, concur
   return { task: task.id, mode: task.mode, K, passes, passRate: passes / K, failures };
 }
 
-// Roll out a whole set of tasks (each K times). Returns per-task results + the
-// aggregate pass rate with a 95% CI (the held-out measurement).
+// Roll out a whole set of tasks (each K times). All (task, rollout) units share
+// ONE bounded pool, so tasks overlap instead of running one-at-a-time — the whole
+// set finishes in the time of the slowest ~concurrency units, not the sum of
+// per-task times. `concurrency` still caps concurrent sandboxes (keep it under the
+// Daytona vCPU tier limit). Returns per-task results + aggregate mean with 95% CI.
 export async function rolloutSet(backend, agent, tasks, lessons, { K = 5, concurrency = 6, rand = Math.random } = {}) {
-  const results = [];
-  for (const task of tasks) results.push(await rolloutTask(backend, agent, task, lessons, { K, concurrency, rand }));
+  const units = [];
+  for (const task of tasks) for (let k = 0; k < K; k += 1) units.push(task);
+  const graded = await pool(units, concurrency, async (task) => {
+    const code = await agent.generate(task, lessons, rand);
+    const res = await grade(backend, task, code, { timeoutMs: 60_000 });
+    return { taskId: task.id, mode: task.mode, spec: task.spec, passed: res.passed, code, output: res.output };
+  });
+  const byTask = new Map();
+  for (const task of tasks) byTask.set(task.id, { task: task.id, mode: task.mode, K, passes: 0, failures: [] });
+  for (const g of graded) {
+    const t = byTask.get(g.taskId);
+    if (g.passed) t.passes += 1;
+    else t.failures.push({ spec: g.spec, mode: g.mode, code: g.code, output: g.output });
+  }
+  const results = [...byTask.values()].map((t) => ({ ...t, passRate: t.passes / K }));
   const N = tasks.length * K;
   const totalPass = results.reduce((s, r) => s + r.passes, 0);
   const mean = N ? totalPass / N : 0;
