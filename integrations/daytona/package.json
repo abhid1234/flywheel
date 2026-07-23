@@ -1,0 +1,14 @@
+{
+  "name": "flywheel-daytona",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "flywheel × Daytona — the statistical arm's execution substrate. Isolated from the zero-dep core; only this folder depends on the Daytona SDK.",
+  "scripts": {
+    "run": "node run.mjs",
+    "smoke": "node smoke.mjs"
+  },
+  "dependencies": {
+    "@daytonaio/sdk": "^0.200.1"
+  }
+}
