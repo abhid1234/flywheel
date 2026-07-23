@@ -1,125 +1,22 @@
 {
-  "ts": "2026-07-23T01:17:40.115Z",
+  "ts": "2026-07-23T01:56:40.675Z",
   "backend": "daytona",
   "n_per_arm": 60,
-  "tasks_total": 5,
-  "tasks_helped": 5,
-  "gold_episodes": 600,
-  "sandboxes": 800,
-  "elapsed_s": 191.8,
+  "tasks_total": 6,
+  "tasks_helped": 6,
+  "gold_episodes": 720,
+  "sandboxes": 960,
+  "elapsed_s": 249,
   "results": [
     {
-      "task": "env-yaml",
-      "errorClass": "module_not_found",
-      "signature": "bash:module_not_found:python3:yaml",
-      "n": 60,
-      "band95": 0,
-      "before": {
-        "reproduced": 60,
-        "n": 60,
-        "failRate": 1
-      },
-      "after": {
-        "reproduced": 0,
-        "n": 60,
-        "failRate": 0
-      },
-      "verdict": "helped",
-      "delta": 1,
-      "ci95": {
-        "lo": 1,
-        "hi": 1
-      },
-      "powered": true,
-      "incomplete": 0,
-      "sandboxes": 160,
-      "elapsed_s": 67.1
-    },
-    {
-      "task": "node-lodash",
-      "errorClass": "module_not_found",
-      "signature": "bash:module_not_found:node:lodash",
-      "n": 60,
-      "band95": 0,
-      "before": {
-        "reproduced": 60,
-        "n": 60,
-        "failRate": 1
-      },
-      "after": {
-        "reproduced": 0,
-        "n": 60,
-        "failRate": 0
-      },
-      "verdict": "helped",
-      "delta": 1,
-      "ci95": {
-        "lo": 1,
-        "hi": 1
-      },
-      "powered": true,
-      "incomplete": 0,
-      "sandboxes": 160,
-      "elapsed_s": 31.5
-    },
-    {
-      "task": "file-missing",
-      "errorClass": "file_not_found",
-      "signature": "bash:file_not_found:cat:",
-      "n": 60,
-      "band95": 0,
-      "before": {
-        "reproduced": 60,
-        "n": 60,
-        "failRate": 1
-      },
-      "after": {
-        "reproduced": 0,
-        "n": 60,
-        "failRate": 0
-      },
-      "verdict": "helped",
-      "delta": 1,
-      "ci95": {
-        "lo": 1,
-        "hi": 1
-      },
-      "powered": true,
-      "incomplete": 0,
-      "sandboxes": 160,
-      "elapsed_s": 15.4
-    },
-    {
-      "task": "cli-cowsay",
-      "errorClass": "command_not_found",
-      "signature": "bash:command_not_found:cowsay:",
-      "n": 60,
-      "band95": 0,
-      "before": {
-        "reproduced": 60,
-        "n": 60,
-        "failRate": 1
-      },
-      "after": {
-        "reproduced": 0,
-        "n": 60,
-        "failRate": 0
-      },
-      "verdict": "helped",
-      "delta": 1,
-      "ci95": {
-        "lo": 1,
-        "hi": 1
-      },
-      "powered": true,
-      "incomplete": 0,
-      "sandboxes": 160,
-      "elapsed_s": 63.7
-    },
-    {
-      "task": "assert-fail",
+      "task": "billing-invoice",
+      "title": "Billing agent — invoice totals",
+      "fn": "Billing",
+      "scenario": "An AI agent finalizes a customer's invoice.",
+      "wentWrong": "It skipped sales tax, so every invoice total came out wrong.",
+      "theFix": "Correct the calculation to apply the tax rate.",
       "errorClass": "test_failure",
-      "signature": "bash:test_failure:python3:",
+      "signature": "billing:sales-tax-omitted",
       "n": 60,
       "band95": 0,
       "before": {
@@ -141,7 +38,167 @@
       "powered": true,
       "incomplete": 0,
       "sandboxes": 160,
-      "elapsed_s": 14.1
+      "elapsed_s": 11.1
+    },
+    {
+      "task": "support-record",
+      "title": "Support agent — customer lookup",
+      "fn": "Support",
+      "scenario": "An AI agent opens a customer's account record to resolve a support ticket.",
+      "wentWrong": "The account record wasn't where the agent expected — it hit a dead end.",
+      "theFix": "Make the customer record available where the agent looks for it.",
+      "errorClass": "file_not_found",
+      "signature": "support:customer-record-missing",
+      "n": 60,
+      "band95": 0,
+      "before": {
+        "reproduced": 60,
+        "n": 60,
+        "failRate": 1
+      },
+      "after": {
+        "reproduced": 0,
+        "n": 60,
+        "failRate": 0
+      },
+      "verdict": "helped",
+      "delta": 1,
+      "ci95": {
+        "lo": 1,
+        "hi": 1
+      },
+      "powered": true,
+      "incomplete": 0,
+      "sandboxes": 160,
+      "elapsed_s": 13.7
+    },
+    {
+      "task": "payments-integration",
+      "title": "Payments agent — charge a customer",
+      "fn": "Payments",
+      "scenario": "An AI agent connects to the payments provider to charge a customer.",
+      "wentWrong": "The payments integration wasn't installed, so the charge never went through.",
+      "theFix": "Install the payments provider's integration.",
+      "errorClass": "module_not_found",
+      "signature": "payments:integration-not-installed",
+      "n": 60,
+      "band95": 0,
+      "before": {
+        "reproduced": 60,
+        "n": 60,
+        "failRate": 1
+      },
+      "after": {
+        "reproduced": 0,
+        "n": 60,
+        "failRate": 0
+      },
+      "verdict": "helped",
+      "delta": 1,
+      "ci95": {
+        "lo": 1,
+        "hi": 1
+      },
+      "powered": true,
+      "incomplete": 0,
+      "sandboxes": 160,
+      "elapsed_s": 80.8
+    },
+    {
+      "task": "analytics-report",
+      "title": "Analytics agent — sales report",
+      "fn": "Analytics",
+      "scenario": "An AI agent formats the month's sales data into a readable report.",
+      "wentWrong": "The reporting tool wasn't installed, so the report couldn't be generated.",
+      "theFix": "Install the reporting tool the agent uses.",
+      "errorClass": "command_not_found",
+      "signature": "analytics:reporting-tool-missing",
+      "n": 60,
+      "band95": 0,
+      "before": {
+        "reproduced": 60,
+        "n": 60,
+        "failRate": 1
+      },
+      "after": {
+        "reproduced": 0,
+        "n": 60,
+        "failRate": 0
+      },
+      "verdict": "helped",
+      "delta": 1,
+      "ci95": {
+        "lo": 1,
+        "hi": 1
+      },
+      "powered": true,
+      "incomplete": 0,
+      "sandboxes": 160,
+      "elapsed_s": 104.7
+    },
+    {
+      "task": "orders-validation",
+      "title": "Operations agent — order intake",
+      "fn": "Operations",
+      "scenario": "An AI agent validates an incoming customer order before processing it.",
+      "wentWrong": "The data-handling library was missing, so order validation crashed.",
+      "theFix": "Install the data-handling library the agent depends on.",
+      "errorClass": "module_not_found",
+      "signature": "operations:order-validation-library-missing",
+      "n": 60,
+      "band95": 0,
+      "before": {
+        "reproduced": 60,
+        "n": 60,
+        "failRate": 1
+      },
+      "after": {
+        "reproduced": 0,
+        "n": 60,
+        "failRate": 0
+      },
+      "verdict": "helped",
+      "delta": 1,
+      "ci95": {
+        "lo": 1,
+        "hi": 1
+      },
+      "powered": true,
+      "incomplete": 0,
+      "sandboxes": 160,
+      "elapsed_s": 28.4
+    },
+    {
+      "task": "quality-check",
+      "title": "QA agent — shipment check",
+      "fn": "Quality",
+      "scenario": "An AI agent verifies a shipment's recorded weight matches its contents.",
+      "wentWrong": "A totting-up bug let a mismatched shipment pass the check.",
+      "theFix": "Correct the check so the totals actually have to agree.",
+      "errorClass": "test_failure",
+      "signature": "quality:shipment-weight-mismatch",
+      "n": 60,
+      "band95": 0,
+      "before": {
+        "reproduced": 60,
+        "n": 60,
+        "failRate": 1
+      },
+      "after": {
+        "reproduced": 0,
+        "n": 60,
+        "failRate": 0
+      },
+      "verdict": "helped",
+      "delta": 1,
+      "ci95": {
+        "lo": 1,
+        "hi": 1
+      },
+      "powered": true,
+      "incomplete": 0,
+      "sandboxes": 160,
+      "elapsed_s": 10.3
     }
   ]
 }
