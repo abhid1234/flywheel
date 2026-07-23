@@ -13,6 +13,7 @@
 
 export const task = {
   id: "env-yaml",
+  errorClass: "module_not_found",
   signature: "bash:module_not_found:python3:yaml",
   description: "python3 -c 'import yaml' fails without pyyaml; the fix is to install it.",
 

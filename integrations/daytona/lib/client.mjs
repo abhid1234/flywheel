@@ -24,28 +24,48 @@ function makeMockBackend() {
   return {
     kind: "mock",
     async run(steps, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
-      // Model a fresh venv: creating one starts with ZERO third-party modules
-      // (no system site-packages), matching real venv isolation. Only stdlib.
-      const venv = { installed: new Set(["os", "sys", "json"]) };
+      // A small deterministic model of a POSIX sandbox — enough to faithfully
+      // reproduce every controlled task's known behaviour offline, so mock runs
+      // are representative of the real ones. Tracks: python venv modules, node
+      // packages, files, and installed CLI tools.
+      const world = { pyMods: new Set(["os", "sys", "json"]), nodePkgs: new Set(), files: new Set(), clis: new Set() };
+      const fail = (log, stderr) => ({ exitCode: 1, stdout: "", stderr, steps: log });
+      const ok = (log) => ({ exitCode: 0, stdout: "", stderr: "", steps: log });
       const log = [];
       for (const step of steps) {
         const s = String(step);
-        // model: `python -m venv <dir>` — a clean, empty third-party env
-        if (/python3?\s+-m\s+venv\b/.test(s)) { venv.installed = new Set(["os", "sys", "json"]); log.push("created venv"); continue; }
-        // model: pip install adds a package (pyyaml provides the `yaml` module)
+        // fresh venv → no third-party python modules
+        if (/python3?\s+-m\s+venv\b/.test(s)) { world.pyMods = new Set(["os", "sys", "json"]); log.push("venv"); continue; }
+        // pip install <pkg> → provides its module (pyyaml→yaml) and any console script
         let m = s.match(/pip\s+install\s+(?:-\S+\s+)*([\w.-]+)/);
-        if (m) { venv.installed.add(m[1].toLowerCase().replace("pyyaml", "yaml")); log.push(`installed ${m[1]}`); continue; }
-        // model: the witness — python importing a module
-        m = s.match(/python3?\s+-c\s+["']import\s+([\w.]+)["']/);
-        if (m) {
-          const mod = m[1].toLowerCase();
-          if (venv.installed.has(mod)) return { exitCode: 0, stdout: "", stderr: "", steps: log };
-          return { exitCode: 1, stdout: "", stderr: `Traceback (most recent call last):\n  File "<string>", line 1, in <module>\nModuleNotFoundError: No module named '${mod}'`, steps: log };
-        }
-        // unknown steps succeed quietly (setup noise)
+        if (m) { const p = m[1].toLowerCase(); world.pyMods.add(p.replace("pyyaml", "yaml")); world.clis.add(p); log.push(`pip ${p}`); continue; }
+        // npm install <pkg> → provides the node module
+        m = s.match(/npm\s+install\s+([\w.@/-]+)/);
+        if (m) { world.nodePkgs.add(m[1].toLowerCase()); log.push(`npm ${m[1]}`); continue; }
+        // echo ... > file / touch file → create a file
+        m = s.match(/(?:>|touch)\s*([^\s;|&]+)/);
+        if (m && /(?:^|\s)(?:echo|printf|touch|cat\s*<<)/.test(s)) { world.files.add(m[1]); log.push(`write ${m[1]}`); continue; }
+        // rm -f file → remove it
+        m = s.match(/rm\s+-[rf]+\s+([^\s;|&]+)/);
+        if (m) { world.files.delete(m[1]); log.push(`rm ${m[1]}`); continue; }
+        // witness: python import
+        m = s.match(/python3?\s+-c\s+["']import\s+([\w.]+)["']/) || s.match(/\/bin\/python\s+-c\s+["']import\s+([\w.]+)["']/);
+        if (m) { const mod = m[1].toLowerCase(); return world.pyMods.has(mod) ? ok(log) : fail(log, `ModuleNotFoundError: No module named '${mod}'`); }
+        // witness: python assertion
+        m = s.match(/python3?\s+-c\s+["']assert\s+([\d\s+*/-]+)==\s*(\d+)/);
+        if (m) { const lhs = Function(`return (${m[1]})`)(); return lhs === Number(m[2]) ? ok(log) : fail(log, "AssertionError"); }
+        // witness: node require
+        m = s.match(/node\s+-e\s+["']require\(['"]([\w.@/-]+)['"]\)["']/);
+        if (m) { const pkg = m[1].toLowerCase(); return world.nodePkgs.has(pkg) ? ok(log) : fail(log, `Error: Cannot find module '${pkg}'`); }
+        // witness: cat a file
+        m = s.match(/(?:^|;|&&|\s)cat\s+([^\s;|&]+)\s*$/);
+        if (m) { return world.files.has(m[1]) ? ok(log) : fail(log, `cat: ${m[1]}: No such file or directory`); }
+        // witness: a venv-scoped CLI (e.g. /tmp/ve/bin/cowsay) — exists iff installed
+        m = s.match(/\/bin\/([\w.-]+)\s/);
+        if (m && !/python|pip/.test(m[1])) { return world.clis.has(m[1].toLowerCase()) ? ok(log) : fail(log, `${m[1]}: command not found`); }
         log.push(`ran: ${s.slice(0, 40)}`);
       }
-      return { exitCode: 0, stdout: "", stderr: "", steps: log };
+      return ok(log);
     },
   };
 }
