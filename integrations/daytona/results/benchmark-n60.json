@@ -1,0 +1,147 @@
+{
+  "ts": "2026-07-23T01:17:40.115Z",
+  "backend": "daytona",
+  "n_per_arm": 60,
+  "tasks_total": 5,
+  "tasks_helped": 5,
+  "gold_episodes": 600,
+  "sandboxes": 800,
+  "elapsed_s": 191.8,
+  "results": [
+    {
+      "task": "env-yaml",
+      "errorClass": "module_not_found",
+      "signature": "bash:module_not_found:python3:yaml",
+      "n": 60,
+      "band95": 0,
+      "before": {
+        "reproduced": 60,
+        "n": 60,
+        "failRate": 1
+      },
+      "after": {
+        "reproduced": 0,
+        "n": 60,
+        "failRate": 0
+      },
+      "verdict": "helped",
+      "delta": 1,
+      "ci95": {
+        "lo": 1,
+        "hi": 1
+      },
+      "powered": true,
+      "incomplete": 0,
+      "sandboxes": 160,
+      "elapsed_s": 67.1
+    },
+    {
+      "task": "node-lodash",
+      "errorClass": "module_not_found",
+      "signature": "bash:module_not_found:node:lodash",
+      "n": 60,
+      "band95": 0,
+      "before": {
+        "reproduced": 60,
+        "n": 60,
+        "failRate": 1
+      },
+      "after": {
+        "reproduced": 0,
+        "n": 60,
+        "failRate": 0
+      },
+      "verdict": "helped",
+      "delta": 1,
+      "ci95": {
+        "lo": 1,
+        "hi": 1
+      },
+      "powered": true,
+      "incomplete": 0,
+      "sandboxes": 160,
+      "elapsed_s": 31.5
+    },
+    {
+      "task": "file-missing",
+      "errorClass": "file_not_found",
+      "signature": "bash:file_not_found:cat:",
+      "n": 60,
+      "band95": 0,
+      "before": {
+        "reproduced": 60,
+        "n": 60,
+        "failRate": 1
+      },
+      "after": {
+        "reproduced": 0,
+        "n": 60,
+        "failRate": 0
+      },
+      "verdict": "helped",
+      "delta": 1,
+      "ci95": {
+        "lo": 1,
+        "hi": 1
+      },
+      "powered": true,
+      "incomplete": 0,
+      "sandboxes": 160,
+      "elapsed_s": 15.4
+    },
+    {
+      "task": "cli-cowsay",
+      "errorClass": "command_not_found",
+      "signature": "bash:command_not_found:cowsay:",
+      "n": 60,
+      "band95": 0,
+      "before": {
+        "reproduced": 60,
+        "n": 60,
+        "failRate": 1
+      },
+      "after": {
+        "reproduced": 0,
+        "n": 60,
+        "failRate": 0
+      },
+      "verdict": "helped",
+      "delta": 1,
+      "ci95": {
+        "lo": 1,
+        "hi": 1
+      },
+      "powered": true,
+      "incomplete": 0,
+      "sandboxes": 160,
+      "elapsed_s": 63.7
+    },
+    {
+      "task": "assert-fail",
+      "errorClass": "test_failure",
+      "signature": "bash:test_failure:python3:",
+      "n": 60,
+      "band95": 0,
+      "before": {
+        "reproduced": 60,
+        "n": 60,
+        "failRate": 1
+      },
+      "after": {
+        "reproduced": 0,
+        "n": 60,
+        "failRate": 0
+      },
+      "verdict": "helped",
+      "delta": 1,
+      "ci95": {
+        "lo": 1,
+        "hi": 1
+      },
+      "powered": true,
+      "incomplete": 0,
+      "sandboxes": 160,
+      "elapsed_s": 14.1
+    }
+  ]
+}
