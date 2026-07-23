@@ -1,0 +1,103 @@
+{
+  "experiment": "rl-on-trajectories",
+  "agent": "codex",
+  "lesson_writer": "codex",
+  "backend": "daytona",
+  "holdout": 11,
+  "train": 9,
+  "repeats": 6,
+  "noise_band_pp": 12.1,
+  "baseline": 0.2727272727272727,
+  "final": 0.7575757575757576,
+  "gain_pp": 48.5,
+  "lessons_kept": 2,
+  "policy": [
+    {
+      "mode": "parse-none",
+      "text": "Handle invalid inputs explicitly and return the required sentinel value instead of allowing conversion errors to escape."
+    },
+    {
+      "mode": "sorted-unique",
+      "text": "Infer output ordering from the tests as part of the contract, and verify examples exactly instead of assuming “unique” means preserving input order."
+    }
+  ],
+  "curve": [
+    {
+      "round": 0,
+      "mean": 0.2727272727272727,
+      "lo": 0.16527959356865152,
+      "hi": 0.3801749518858939,
+      "status": "baseline"
+    },
+    {
+      "round": 1,
+      "mean": 0.2727272727272727,
+      "lo": 0.16527959356865152,
+      "hi": 0.3801749518858939,
+      "status": "rejected",
+      "lesson": "Always identify and explicitly handle boundary cases—especially empty inputs—before applying operations that assume nonempty data.",
+      "gain": 0.0757575757575758
+    },
+    {
+      "round": 2,
+      "mean": 0.5454545454545454,
+      "lo": 0.4253243881429132,
+      "hi": 0.6655847027661776,
+      "status": "learned",
+      "lesson": "Handle invalid inputs explicitly and return the required sentinel value instead of allowing conversion errors to escape.",
+      "gain": 0.2727272727272727
+    },
+    {
+      "round": 3,
+      "mean": 0.7575757575757576,
+      "lo": 0.6541841800990401,
+      "hi": 0.860967335052475,
+      "status": "learned",
+      "lesson": "Infer output ordering from the tests as part of the contract, and verify examples exactly instead of assuming “unique” means preserving input order.",
+      "gain": 0.21212121212121215
+    },
+    {
+      "round": 4,
+      "mean": 0.7575757575757576,
+      "lo": 0.6541841800990401,
+      "hi": 0.860967335052475,
+      "status": "rejected",
+      "lesson": "Match the output’s required precision and formatting—when examples expect `33.33`, round percentage results to two decimal places.",
+      "gain": -0.030303030303030276
+    }
+  ],
+  "lessons": [
+    {
+      "round": 1,
+      "mode": "empty-none",
+      "lesson": "Always identify and explicitly handle boundary cases—especially empty inputs—before applying operations that assume nonempty data.",
+      "gain": 0.0757575757575758,
+      "status": "rejected",
+      "cluster": 12
+    },
+    {
+      "round": 2,
+      "mode": "parse-none",
+      "lesson": "Handle invalid inputs explicitly and return the required sentinel value instead of allowing conversion errors to escape.",
+      "gain": 0.2727272727272727,
+      "status": "learned",
+      "cluster": 12
+    },
+    {
+      "round": 3,
+      "mode": "sorted-unique",
+      "lesson": "Infer output ordering from the tests as part of the contract, and verify examples exactly instead of assuming “unique” means preserving input order.",
+      "gain": 0.21212121212121215,
+      "status": "learned",
+      "cluster": 6
+    },
+    {
+      "round": 4,
+      "mode": "round-2dp",
+      "lesson": "Match the output’s required precision and formatting—when examples expect `33.33`, round percentage results to two decimal places.",
+      "gain": -0.030303030303030276,
+      "status": "rejected",
+      "cluster": 5
+    }
+  ]
+}

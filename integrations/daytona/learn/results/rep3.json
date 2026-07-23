@@ -1,0 +1,82 @@
+{
+  "experiment": "rl-on-trajectories",
+  "agent": "codex",
+  "lesson_writer": "codex",
+  "backend": "daytona",
+  "holdout": 11,
+  "train": 9,
+  "repeats": 6,
+  "noise_band_pp": 12.1,
+  "baseline": 0.2727272727272727,
+  "final": 0.5454545454545454,
+  "gain_pp": 27.3,
+  "lessons_kept": 1,
+  "policy": [
+    {
+      "mode": "empty-none",
+      "text": "Always handle boundary cases explicitly—especially empty inputs—and return the contract’s sentinel value instead of calling an operation that requires nonempty data."
+    }
+  ],
+  "curve": [
+    {
+      "round": 0,
+      "mean": 0.2727272727272727,
+      "lo": 0.16527959356865152,
+      "hi": 0.3801749518858939,
+      "status": "baseline"
+    },
+    {
+      "round": 1,
+      "mean": 0.5454545454545454,
+      "lo": 0.4253243881429132,
+      "hi": 0.6655847027661776,
+      "status": "learned",
+      "lesson": "Always handle boundary cases explicitly—especially empty inputs—and return the contract’s sentinel value instead of calling an operation that requires nonempty data.",
+      "gain": 0.2727272727272727
+    },
+    {
+      "round": 2,
+      "mean": 0.5454545454545454,
+      "lo": 0.4253243881429132,
+      "hi": 0.6655847027661776,
+      "status": "rejected",
+      "lesson": "Validate conversion inputs and return the specified failure sentinel (such as `None`) instead of letting parsing exceptions escape.",
+      "gain": 0.09090909090909094
+    },
+    {
+      "round": 3,
+      "mean": 0.5454545454545454,
+      "lo": 0.4253243881429132,
+      "hi": 0.6655847027661776,
+      "status": "rejected",
+      "lesson": "Infer output-order requirements from the tests and return unique values in the expected sorted order rather than preserving input order.",
+      "gain": 0.10606060606060608
+    }
+  ],
+  "lessons": [
+    {
+      "round": 1,
+      "mode": "empty-none",
+      "lesson": "Always handle boundary cases explicitly—especially empty inputs—and return the contract’s sentinel value instead of calling an operation that requires nonempty data.",
+      "gain": 0.2727272727272727,
+      "status": "learned",
+      "cluster": 12
+    },
+    {
+      "round": 2,
+      "mode": "parse-none",
+      "lesson": "Validate conversion inputs and return the specified failure sentinel (such as `None`) instead of letting parsing exceptions escape.",
+      "gain": 0.09090909090909094,
+      "status": "rejected",
+      "cluster": 12
+    },
+    {
+      "round": 3,
+      "mode": "sorted-unique",
+      "lesson": "Infer output-order requirements from the tests and return unique values in the expected sorted order rather than preserving input order.",
+      "gain": 0.10606060606060608,
+      "status": "rejected",
+      "cluster": 6
+    }
+  ]
+}

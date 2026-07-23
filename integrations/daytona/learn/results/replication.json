@@ -1,0 +1,179 @@
+{
+  "agg": {
+    "n": 3,
+    "baseline": {
+      "mean": 0.2727272727272727,
+      "lo": 0.2727272727272727,
+      "hi": 0.2727272727272727,
+      "vals": [
+        0.2727272727272727,
+        0.2727272727272727,
+        0.2727272727272727
+      ]
+    },
+    "final": {
+      "mean": 0.6414141414141414,
+      "lo": 0.5454545454545454,
+      "hi": 0.7575757575757576,
+      "vals": [
+        0.7575757575757576,
+        0.6212121212121212,
+        0.5454545454545454
+      ]
+    },
+    "gain": {
+      "mean": 0.3686868686868687,
+      "lo": 0.2727272727272727,
+      "hi": 0.48484848484848486
+    },
+    "modes": [
+      {
+        "mode": "empty-none",
+        "kept": 2,
+        "tried": 3,
+        "gains": [
+          0.0757575757575758,
+          0.16666666666666669,
+          0.2727272727272727
+        ]
+      },
+      {
+        "mode": "sorted-unique",
+        "kept": 2,
+        "tried": 3,
+        "gains": [
+          0.21212121212121215,
+          0.18181818181818182,
+          0.10606060606060608
+        ]
+      },
+      {
+        "mode": "parse-none",
+        "kept": 1,
+        "tried": 3,
+        "gains": [
+          0.2727272727272727,
+          0.10606060606060602,
+          0.09090909090909094
+        ]
+      },
+      {
+        "mode": "round-2dp",
+        "kept": 0,
+        "tried": 2,
+        "gains": [
+          -0.030303030303030276,
+          -0.045454545454545414
+        ]
+      }
+    ]
+  },
+  "runs": [
+    {
+      "baseline": 0.2727272727272727,
+      "final": 0.7575757575757576,
+      "lessons": [
+        {
+          "round": 1,
+          "mode": "empty-none",
+          "lesson": "Always identify and explicitly handle boundary cases—especially empty inputs—before applying operations that assume nonempty data.",
+          "gain": 0.0757575757575758,
+          "status": "rejected",
+          "cluster": 12
+        },
+        {
+          "round": 2,
+          "mode": "parse-none",
+          "lesson": "Handle invalid inputs explicitly and return the required sentinel value instead of allowing conversion errors to escape.",
+          "gain": 0.2727272727272727,
+          "status": "learned",
+          "cluster": 12
+        },
+        {
+          "round": 3,
+          "mode": "sorted-unique",
+          "lesson": "Infer output ordering from the tests as part of the contract, and verify examples exactly instead of assuming “unique” means preserving input order.",
+          "gain": 0.21212121212121215,
+          "status": "learned",
+          "cluster": 6
+        },
+        {
+          "round": 4,
+          "mode": "round-2dp",
+          "lesson": "Match the output’s required precision and formatting—when examples expect `33.33`, round percentage results to two decimal places.",
+          "gain": -0.030303030303030276,
+          "status": "rejected",
+          "cluster": 5
+        }
+      ]
+    },
+    {
+      "baseline": 0.2727272727272727,
+      "final": 0.6212121212121212,
+      "lessons": [
+        {
+          "round": 1,
+          "mode": "empty-none",
+          "lesson": "Always handle boundary cases explicitly—especially empty inputs—according to the required return contract before applying operations that assume data exists.",
+          "gain": 0.16666666666666669,
+          "status": "learned",
+          "cluster": 12
+        },
+        {
+          "round": 2,
+          "mode": "parse-none",
+          "lesson": "Handle invalid or malformed inputs explicitly and return the specified sentinel value instead of allowing parsing exceptions to escape.",
+          "gain": 0.10606060606060602,
+          "status": "rejected",
+          "cluster": 12
+        },
+        {
+          "round": 3,
+          "mode": "sorted-unique",
+          "lesson": "Use failing tests to infer ambiguous output requirements—here, “unique values” must be returned in sorted order, not insertion order.",
+          "gain": 0.18181818181818182,
+          "status": "learned",
+          "cluster": 6
+        },
+        {
+          "round": 4,
+          "mode": "round-2dp",
+          "lesson": "Match the required output precision explicitly—when tests expect a percentage like 33.33, round the computed value to two decimal places.",
+          "gain": -0.045454545454545414,
+          "status": "rejected",
+          "cluster": 6
+        }
+      ]
+    },
+    {
+      "baseline": 0.2727272727272727,
+      "final": 0.5454545454545454,
+      "lessons": [
+        {
+          "round": 1,
+          "mode": "empty-none",
+          "lesson": "Always handle boundary cases explicitly—especially empty inputs—and return the contract’s sentinel value instead of calling an operation that requires nonempty data.",
+          "gain": 0.2727272727272727,
+          "status": "learned",
+          "cluster": 12
+        },
+        {
+          "round": 2,
+          "mode": "parse-none",
+          "lesson": "Validate conversion inputs and return the specified failure sentinel (such as `None`) instead of letting parsing exceptions escape.",
+          "gain": 0.09090909090909094,
+          "status": "rejected",
+          "cluster": 12
+        },
+        {
+          "round": 3,
+          "mode": "sorted-unique",
+          "lesson": "Infer output-order requirements from the tests and return unique values in the expected sorted order rather than preserving input order.",
+          "gain": 0.10606060606060608,
+          "status": "rejected",
+          "cluster": 6
+        }
+      ]
+    }
+  ]
+}
