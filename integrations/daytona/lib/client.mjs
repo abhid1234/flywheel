@@ -20,49 +20,73 @@ const DEFAULT_TIMEOUT_MS = 120_000;
 // arbitrary shells; it models the specific, known behaviours the PoC tasks rely
 // on (package presence, a witness import) so the orchestration logic can be
 // verified deterministically. Real behaviour comes from the daytona backend.
+// Evaluate a simple `python3 -c "..."` assertion snippet deterministically.
+// Handles the arithmetic/assert patterns the controlled tasks use (assignments,
+// abs(), sum([...]), comparisons). Returns true if the assertion passes.
+function pyAssertPasses(code) {
+  const parts = code.split(";").map((s) => s.trim()).filter(Boolean);
+  const tr = (x) => x
+    .replace(/\babs\(/g, "Math.abs(")
+    .replace(/\bsum\(([^)]+)\)/g, "($1).reduce((a,b)=>a+b,0)");
+  let js = "";
+  let assertExpr = null;
+  for (const p of parts) {
+    const am = p.match(/^assert\s+([\s\S]+?)(?:,\s*['"][\s\S]*)?$/);
+    if (am) { assertExpr = am[1]; continue; }
+    if (/^[A-Za-z_]\w*\s*=/.test(p)) js += `var ${tr(p)};\n`;
+  }
+  if (assertExpr == null) return true;
+  try { return !!Function(`${js}return (${tr(assertExpr)});`)(); }
+  catch { return true; }
+}
+
 function makeMockBackend() {
   return {
     kind: "mock",
     async run(steps, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
       // A small deterministic model of a POSIX sandbox — enough to faithfully
       // reproduce every controlled task's known behaviour offline, so mock runs
-      // are representative of the real ones. Tracks: python venv modules, node
-      // packages, files, and installed CLI tools.
-      const world = { pyMods: new Set(["os", "sys", "json"]), nodePkgs: new Set(), files: new Set(), clis: new Set() };
+      // are representative of the real ones. It tracks python venv modules, node
+      // packages, files, and whether a pip install ran this trial (the "after"
+      // arm's fix step) — which is what makes a venv-scoped CLI available.
+      const world = { pyMods: new Set(["os", "sys", "json"]), nodePkgs: new Set(), files: new Set(), pipInstalled: false };
       const fail = (log, stderr) => ({ exitCode: 1, stdout: "", stderr, steps: log });
       const ok = (log) => ({ exitCode: 0, stdout: "", stderr: "", steps: log });
+      // known pip package → module names it provides (for `import X` witnesses)
+      const PROVIDES = { pyyaml: "yaml", stripe: "stripe" };
       const log = [];
       for (const step of steps) {
         const s = String(step);
-        // fresh venv → no third-party python modules
-        if (/python3?\s+-m\s+venv\b/.test(s)) { world.pyMods = new Set(["os", "sys", "json"]); log.push("venv"); continue; }
-        // pip install <pkg> → provides its module (pyyaml→yaml) and any console script
+        // fresh venv → no third-party modules, and no fix has run yet
+        if (/python3?\s+-m\s+venv\b/.test(s)) { world.pyMods = new Set(["os", "sys", "json"]); world.pipInstalled = false; log.push("venv"); continue; }
+        // pip install <pkg> → provides its module + marks the venv provisioned
         let m = s.match(/pip\s+install\s+(?:-\S+\s+)*([\w.-]+)/);
-        if (m) { const p = m[1].toLowerCase(); world.pyMods.add(p.replace("pyyaml", "yaml")); world.clis.add(p); log.push(`pip ${p}`); continue; }
+        if (m) { const p = m[1].toLowerCase(); world.pyMods.add(PROVIDES[p] ?? p); world.pipInstalled = true; log.push(`pip ${p}`); continue; }
         // npm install <pkg> → provides the node module
         m = s.match(/npm\s+install\s+([\w.@/-]+)/);
         if (m) { world.nodePkgs.add(m[1].toLowerCase()); log.push(`npm ${m[1]}`); continue; }
-        // echo ... > file / touch file → create a file
-        m = s.match(/(?:>|touch)\s*([^\s;|&]+)/);
-        if (m && /(?:^|\s)(?:echo|printf|touch|cat\s*<<)/.test(s)) { world.files.add(m[1]); log.push(`write ${m[1]}`); continue; }
-        // rm -f file → remove it
+        // echo/printf ... > file → create a file
+        m = s.match(/(?:echo|printf)[^>]*>\s*([^\s;|&]+)/);
+        if (m) { world.files.add(m[1]); log.push(`write ${m[1]}`); continue; }
+        // rm file(s) → remove
         m = s.match(/rm\s+-[rf]+\s+([^\s;|&]+)/);
         if (m) { world.files.delete(m[1]); log.push(`rm ${m[1]}`); continue; }
         // witness: python import
-        m = s.match(/python3?\s+-c\s+["']import\s+([\w.]+)["']/) || s.match(/\/bin\/python\s+-c\s+["']import\s+([\w.]+)["']/);
+        m = s.match(/(?:python3?|\/bin\/python)\s+-c\s+["']import\s+([\w.]+)["']/);
         if (m) { const mod = m[1].toLowerCase(); return world.pyMods.has(mod) ? ok(log) : fail(log, `ModuleNotFoundError: No module named '${mod}'`); }
-        // witness: python assertion
-        m = s.match(/python3?\s+-c\s+["']assert\s+([\d\s+*/-]+)==\s*(\d+)/);
-        if (m) { const lhs = Function(`return (${m[1]})`)(); return lhs === Number(m[2]) ? ok(log) : fail(log, "AssertionError"); }
-        // witness: node require
-        m = s.match(/node\s+-e\s+["']require\(['"]([\w.@/-]+)['"]\)["']/);
-        if (m) { const pkg = m[1].toLowerCase(); return world.nodePkgs.has(pkg) ? ok(log) : fail(log, `Error: Cannot find module '${pkg}'`); }
+        // witness: python assertion (billing total, quality weight check, …)
+        m = s.match(/python3?\s+-c\s+["']([\s\S]*?assert[\s\S]*?)["']\s*$/);
+        if (m) { return pyAssertPasses(m[1]) ? ok(log) : fail(log, "AssertionError"); }
+        // witness: node require (may be preceded by cd; extract the require)
+        m = s.match(/require\(['"]([\w.@/-]+)['"]\)/);
+        if (m && /node\s+-e/.test(s)) { const pkg = m[1].toLowerCase(); return world.nodePkgs.has(pkg) ? ok(log) : fail(log, `Error: Cannot find module '${pkg}'`); }
         // witness: cat a file
         m = s.match(/(?:^|;|&&|\s)cat\s+([^\s;|&]+)\s*$/);
         if (m) { return world.files.has(m[1]) ? ok(log) : fail(log, `cat: ${m[1]}: No such file or directory`); }
-        // witness: a venv-scoped CLI (e.g. /tmp/ve/bin/cowsay) — exists iff installed
-        m = s.match(/\/bin\/([\w.-]+)\s/);
-        if (m && !/python|pip/.test(m[1])) { return world.clis.has(m[1].toLowerCase()) ? ok(log) : fail(log, `${m[1]}: command not found`); }
+        // witness: a venv-scoped CLI tool (e.g. /tmp/ve/bin/csvlook) — available
+        // iff this trial installed it (the fix step). python/pip always present.
+        m = s.match(/\/bin\/([\w.-]+)\b/);
+        if (m && !/^(python3?|pip3?)$/.test(m[1])) { return world.pipInstalled ? ok(log) : fail(log, `${m[1]}: command not found`); }
         log.push(`ran: ${s.slice(0, 40)}`);
       }
       return ok(log);

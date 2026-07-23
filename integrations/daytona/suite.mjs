@@ -49,12 +49,12 @@ async function main() {
   const goldPath = path.join(args.out, "daytona-episodes.jsonl");
   const results = [];
   for (const task of tasks) {
-    process.stdout.write(`▶ ${task.id.padEnd(14)} [${task.errorClass}] … `);
+    process.stdout.write(`▶ ${(task.fn || task.id).padEnd(11)} ${task.title.padEnd(30)} … `);
     const r = await runTask(task, { backend, n: args.n, concurrency: args.concurrency, timeoutMs: 120_000, stamp });
     for (const ep of r.episodes) appendFileSync(goldPath, `${JSON.stringify(ep)}\n`);
     const { episodes, ...summary } = r;
     results.push(summary);
-    const mark = r.verdict === "helped" ? "✓ helped" : r.verdict;
+    const mark = r.verdict === "helped" ? "✓ fix verified" : r.verdict;
     process.stdout.write(
       `${(r.before.failRate * 100).toFixed(0)}%→${(r.after.failRate * 100).toFixed(0)}%  ` +
       `Δ${r.delta.toFixed(2)} band${r.band95.toFixed(2)}  ${r.powered ? "powered" : "underpowered"}  ${mark}` +

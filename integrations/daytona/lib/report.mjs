@@ -1,26 +1,31 @@
 // Renders a benchmark report object into a self-contained HTML results page,
-// in the playground's diagnostic-instrument visual language (brass on graphite,
-// mono-forward, red→green reserved for state). No dependencies, no external assets.
+// framed for a business reader: each row is a scenario an AI agent runs into,
+// what went wrong, and whether the fix provably worked. Diagnostic-instrument
+// visual language (brass on graphite). No dependencies, no external assets.
 
-const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const pct = (x) => `${Math.round(x * 100)}%`;
 
 export function renderReport(report) {
-  const rows = (report.results || []).map((r) => {
+  const cards = (report.results || []).map((r) => {
     const helped = r.verdict === "helped";
-    const badge = helped ? `<span class="v helped">helped</span>`
-      : r.verdict === "no_effect" ? `<span class="v none">no effect</span>`
+    const verdict = helped ? `<span class="v helped">✓ fix verified</span>`
+      : r.verdict === "no_effect" ? `<span class="v none">no measurable change</span>`
       : `<span class="v inc">${esc(r.verdict)}</span>`;
-    return `<tr>
-      <td class="mono task">${esc(r.task)}</td>
-      <td class="mono cls">${esc(r.errorClass || "—")}</td>
-      <td class="bar"><span class="rail"><i class="fill red" style="width:${pct(r.before.failRate)}"></i></span><span class="n">${pct(r.before.failRate)}</span></td>
-      <td class="bar"><span class="rail"><i class="fill ${r.after.failRate === 0 ? "green" : "amber"}" style="width:${pct(Math.max(r.after.failRate, 0.02))}"></i></span><span class="n">${pct(r.after.failRate)}</span></td>
-      <td class="num">${r.delta.toFixed(2)}</td>
-      <td class="num band">${r.band95.toFixed(2)}</td>
-      <td class="num">${r.powered ? "yes" : "no"}</td>
-      <td>${badge}</td>
-    </tr>`;
+    return `<article class="case">
+      <div class="case-head">
+        <div><div class="fn">${esc(r.fn || "")}</div><h3>${esc(r.title || r.task)}</h3></div>
+        ${verdict}
+      </div>
+      <p class="scen">${esc(r.scenario || "")}</p>
+      <div class="ba">
+        <div class="col"><div class="lbl">Before</div><div class="wrong"><span class="x">✕</span> ${esc(r.wentWrong || "")}</div>
+          <div class="meter"><span class="rail"><i class="fill red" style="width:${pct(r.before.failRate)}"></i></span><b class="mono">${pct(r.before.failRate)} failed</b></div></div>
+        <div class="arrow">→</div>
+        <div class="col"><div class="lbl">After the fix</div><div class="right"><span class="c">✓</span> ${esc(r.theFix || "")}</div>
+          <div class="meter"><span class="rail"><i class="fill ${r.after.failRate === 0 ? "green" : "amber"}" style="width:${pct(Math.max(r.after.failRate, 0.02))}"></i></span><b class="mono">${pct(r.after.failRate)} failed</b></div></div>
+      </div>
+    </article>`;
   }).join("\n");
 
   const helped = report.tasks_helped ?? 0;
@@ -28,64 +33,62 @@ export function renderReport(report) {
 
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>flywheel × daytona — benchmark</title>
+<title>flywheel × daytona — agent reliability benchmark</title>
 <style>
 :root{--paper:#e7ebef;--card:#f4f6f8;--card2:#eef1f4;--ink:#141d26;--ink2:#4a5765;--ink3:#7c8894;--line:#cdd5dd;--line2:#bcc6cf;--brass:#8a6417;--brass2:#a67c22;--red:#c23b2b;--green:#1f7a4d;--amber:#b5852a;--mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,monospace;--sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
 @media(prefers-color-scheme:dark){:root{--paper:#0e141b;--card:#161f28;--card2:#1b2732;--ink:#e7edf2;--ink2:#9aa8b5;--ink3:#6a7783;--line:#26333f;--line2:#324150;--brass:#e0b452;--brass2:#eec66d;--red:#f0705e;--green:#54c088;--amber:#e0b452}}
 *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.6 var(--sans);-webkit-font-smoothing:antialiased;background-image:radial-gradient(circle at 1px 1px,var(--line) 1px,transparent 0);background-size:26px 26px}
-.wrap{max-width:980px;margin:0 auto;padding:40px 22px 80px}
+.wrap{max-width:1000px;margin:0 auto;padding:44px 22px 90px}
 .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink3);font-weight:600}
-h1{font-size:clamp(28px,4vw,42px);letter-spacing:-.02em;margin:10px 0 6px;font-weight:800}
-.sub{color:var(--ink2);max-width:66ch;margin:0 0 26px}
-.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:0 0 28px}
+h1{font-size:clamp(28px,4.4vw,44px);letter-spacing:-.02em;margin:10px 0 8px;font-weight:800;text-wrap:balance}
+.sub{color:var(--ink2);max-width:70ch;margin:0 0 28px;font-size:17px}
+.sub b{color:var(--ink)}
+.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:0 0 30px}
 @media(max-width:640px){.cards{grid-template-columns:repeat(2,1fr)}}
 .stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:15px 16px}
-.stat .n{font-size:26px;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
-.stat .l{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3);margin-top:2px}
+.stat .n{font-size:27px;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
 .stat .n .of{font-size:16px;color:var(--ink3)}
-.panel{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--card);box-shadow:0 1px 2px rgba(20,29,38,.04),0 8px 30px rgba(20,29,38,.06)}
-.phead{padding:14px 20px;border-bottom:1px solid var(--line);background:var(--card2);font-family:var(--mono);font-size:12.5px;color:var(--ink3);display:flex;gap:10px;align-items:center}
-.dot{display:flex;gap:6px}.dot i{width:9px;height:9px;border-radius:50%;background:var(--line2)}
-table{border-collapse:collapse;width:100%;font-size:13.5px}
-th{text-align:left;padding:11px 14px;font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink3);border-bottom:1px solid var(--line);font-weight:600;white-space:nowrap}
-td{padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:middle}
-tr:last-child td{border-bottom:0}
+.stat .l{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3);margin-top:2px}
+.grid{display:grid;gap:14px}
+.case{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 22px;box-shadow:0 1px 2px rgba(20,29,38,.04),0 6px 22px rgba(20,29,38,.05)}
+.case-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px}
+.fn{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--brass);font-weight:700}
+.case h3{margin:2px 0 0;font-size:19px;letter-spacing:-.01em}
+.scen{color:var(--ink2);margin:8px 0 16px;font-size:15px}
+.ba{display:grid;grid-template-columns:1fr auto 1fr;gap:16px;align-items:stretch}
+@media(max-width:640px){.ba{grid-template-columns:1fr;gap:10px}.arrow{display:none}}
+.col{background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:13px 15px;display:flex;flex-direction:column;gap:8px}
+.lbl{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3)}
+.wrong,.right{font-size:14px;line-height:1.45;flex:1}
+.wrong .x{color:var(--red);font-weight:700;margin-right:4px}
+.right .c{color:var(--green);font-weight:700;margin-right:4px}
+.arrow{align-self:center;color:var(--brass);font-size:22px;font-weight:700}
+.meter{display:flex;align-items:center;gap:9px;margin-top:2px}
+.rail{flex:1;height:16px;border-radius:5px;background:var(--paper);border:1px solid var(--line);overflow:hidden}
+.fill{display:block;height:100%}.fill.red{background:color-mix(in srgb,var(--red) 80%,transparent)}.fill.green{background:color-mix(in srgb,var(--green) 80%,transparent)}.fill.amber{background:color-mix(in srgb,var(--amber) 80%,transparent)}
+.meter b{font-size:12px;color:var(--ink2);font-variant-numeric:tabular-nums;white-space:nowrap}
 .mono{font-family:var(--mono)}
-.task{font-weight:700}.cls{color:var(--ink2);font-size:12px}
-.num{font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums;color:var(--ink2)}
-.band{color:var(--ink3)}
-.bar{min-width:120px}
-.rail{display:inline-block;width:74px;height:16px;border-radius:5px;background:var(--card2);border:1px solid var(--line);overflow:hidden;vertical-align:middle;margin-right:8px}
-.fill{display:block;height:100%}.fill.red{background:color-mix(in srgb,var(--red) 78%,transparent)}.fill.green{background:color-mix(in srgb,var(--green) 78%,transparent)}.fill.amber{background:color-mix(in srgb,var(--amber) 78%,transparent)}
-.bar .n{font-family:var(--mono);font-size:12px;color:var(--ink2);font-variant-numeric:tabular-nums}
-.v{font-family:var(--mono);font-size:11.5px;font-weight:700;padding:4px 9px;border-radius:6px;white-space:nowrap}
+.v{font-family:var(--mono);font-size:12px;font-weight:700;padding:5px 11px;border-radius:7px;white-space:nowrap;flex-shrink:0}
 .v.helped{color:var(--green);border:1px solid color-mix(in srgb,var(--green) 40%,transparent);background:color-mix(in srgb,var(--green) 10%,transparent)}
 .v.none{color:var(--ink2);border:1px solid var(--line2)}
 .v.inc{color:var(--amber);border:1px solid color-mix(in srgb,var(--amber) 40%,transparent)}
-.foot{margin-top:22px;font-family:var(--mono);font-size:12px;color:var(--ink3);line-height:1.7}
-.note{border-left:3px solid var(--brass);padding:8px 0 8px 14px;margin:22px 0 0;color:var(--ink2);font-size:14px;max-width:74ch}
-.scroll{overflow-x:auto}
+.note{border-left:3px solid var(--brass);padding:10px 0 10px 16px;margin:30px 0 0;color:var(--ink2);font-size:15px;max-width:78ch;line-height:1.6}
+.note b{color:var(--ink)}
+.foot{margin-top:24px;font-family:var(--mono);font-size:12px;color:var(--ink3);line-height:1.7}
 </style></head><body><div class="wrap">
-<div class="eyebrow">flywheel × daytona · controlled benchmark</div>
-<h1>Do the fixes actually move the outcome?</h1>
-<p class="sub">Each task is a known failure with a known fix, run in isolated cloud sandboxes across a control arm and a treatment arm. The verdict is flywheel's own paired-bootstrap scorer — and it will only say <b>helped</b> when the effect clears a <b>measured</b> A/A noise floor at n≥60. Gold, by construction.</p>
+<div class="eyebrow">flywheel × daytona · agent reliability benchmark</div>
+<h1>When an AI agent keeps making the same mistake — can you prove the fix worked?</h1>
+<p class="sub">Six business tasks an AI agent runs into. Each is run <b>${report.n_per_arm ?? 0} times broken and ${report.n_per_arm ?? 0} times fixed</b>, in isolated cloud sandboxes, so the improvement is measured — not guessed. A fix is only marked <b>verified</b> when the improvement is provably bigger than random run-to-run noise.</p>
 <div class="cards">
-  <div class="stat"><div class="n">${helped}<span class="of"> / ${total}</span></div><div class="l">tasks helped</div></div>
-  <div class="stat"><div class="n">${report.gold_episodes ?? 0}</div><div class="l">gold episodes</div></div>
-  <div class="stat"><div class="n">${report.sandboxes ?? 0}</div><div class="l">sandboxes run</div></div>
-  <div class="stat"><div class="n">${report.n_per_arm ?? 0}</div><div class="l">trials / arm</div></div>
+  <div class="stat"><div class="n">${helped}<span class="of"> / ${total}</span></div><div class="l">fixes verified</div></div>
+  <div class="stat"><div class="n">${report.gold_episodes ?? 0}</div><div class="l">outcomes recorded</div></div>
+  <div class="stat"><div class="n">${report.sandboxes ?? 0}</div><div class="l">test runs</div></div>
+  <div class="stat"><div class="n">${report.elapsed_s ?? 0}<span class="of">s</span></div><div class="l">total time</div></div>
 </div>
-<div class="panel">
-  <div class="phead"><span class="dot"><i></i><i></i><i></i></span><span>benchmark.json · backend: ${esc(report.backend || "—")} · ${esc((report.ts || "").slice(0, 19).replace("T", " "))}</span></div>
-  <div class="scroll"><table>
-    <thead><tr><th>task</th><th>error class</th><th>control fail-rate</th><th>after fix</th><th>Δ</th><th>A/A band</th><th>powered</th><th>verdict</th></tr></thead>
-    <tbody>${rows}</tbody>
-  </table></div>
-</div>
-<p class="note">Reading it: <b>control fail-rate</b> is how often the failure reproduced with no fix; <b>after fix</b> is the treatment arm. The scorer certifies <b>helped</b> only when the improvement's confidence interval clears the A/A band — the run-to-run noise measured by racing control against itself. That gate is the honest core: it refuses to credit an improvement it cannot distinguish from noise.</p>
+<div class="grid">${cards}</div>
+<p class="note"><b>Why this matters.</b> Teams deploying AI agents hit the same wall: an agent keeps making a mistake, someone tweaks a prompt or a setting, and everyone <i>hopes</i> it's better. This measures it. Each fix is run against the broken version hundreds of times, and the system refuses to say <b>verified</b> unless the improvement clearly beats the background noise. That's the honest bar most "our agent got smarter" claims never clear.</p>
 <div class="foot">
-  backend ${esc(report.backend || "—")} · ${report.sandboxes ?? 0} sandboxes · ${report.elapsed_s ?? 0}s total<br>
-  gold episodes recorded at decision time — the episode→outcome link the agent factory could never capture retroactively (KC-6).<br>
+  backend ${esc(report.backend || "—")} · ${report.sandboxes ?? 0} isolated sandboxes · ${report.elapsed_s ?? 0}s · ${report.gold_episodes ?? 0} outcomes recorded at decision time<br>
   github.com/abhid1234/flywheel · integrations/daytona
 </div>
 </div></body></html>`;

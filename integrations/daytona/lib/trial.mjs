@@ -87,7 +87,9 @@ export async function runTask(task, { backend, n, concurrency = 8, timeoutMs = 1
   }));
 
   return {
-    task: task.id, errorClass: task.errorClass ?? null, signature: task.signature,
+    task: task.id, title: task.title ?? task.id, fn: task.fn ?? null,
+    scenario: task.scenario ?? null, wentWrong: task.wentWrong ?? null, theFix: task.theFix ?? null,
+    errorClass: task.errorClass ?? null, signature: task.signature,
     n, band95, before: rate("before"), after: rate("after"),
     verdict: score.verdict, delta: score.delta, ci95: score.ci95, powered: score.powered,
     incomplete: raw.filter((r) => !r.completed).length,

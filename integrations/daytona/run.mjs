@@ -27,7 +27,7 @@ import path from "node:path";
 
 function parseArgs(argv) {
   // Default concurrency 8 keeps us under the common 10-vCPU tier cap (1 vCPU/sandbox).
-  const out = { task: "env-yaml", n: 12, concurrency: 8, out: path.join(homedir(), ".flywheel", "daytona") };
+  const out = { task: "billing-invoice", n: 12, concurrency: 8, out: path.join(homedir(), ".flywheel", "daytona") };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === "--task") out.task = argv[++i];
