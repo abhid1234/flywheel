@@ -1,0 +1,70 @@
+{
+  "experiment": "learning-curve",
+  "agent": "simulated",
+  "seed": 42,
+  "problems": 40,
+  "train": 20,
+  "holdout": 20,
+  "rounds": 4,
+  "repeats": 8,
+  "baseline": 0.35625,
+  "final": 0.91875,
+  "gain_pp": 56.3,
+  "curve": [
+    {
+      "round": 0,
+      "holdout": 0.35625,
+      "lessons": 0
+    },
+    {
+      "round": 1,
+      "holdout": 0.46875,
+      "lessons": 1
+    },
+    {
+      "round": 2,
+      "holdout": 0.6375,
+      "lessons": 2
+    },
+    {
+      "round": 3,
+      "holdout": 0.7625,
+      "lessons": 3
+    },
+    {
+      "round": 4,
+      "holdout": 0.91875,
+      "lessons": 4
+    }
+  ],
+  "lessons": [
+    {
+      "round": 1,
+      "learned": "null-fields",
+      "lesson": "Treat missing/null fields as expected input; default them, don't crash.",
+      "failures_clustered": 28,
+      "holdout": 0.46875
+    },
+    {
+      "round": 2,
+      "learned": "type-coercion",
+      "lesson": "Parse and validate input types; never assume a string is already a number.",
+      "failures_clustered": 29,
+      "holdout": 0.6375
+    },
+    {
+      "round": 3,
+      "learned": "off-by-one",
+      "lesson": "Re-check loop and slice bounds for off-by-one errors; verify the last element is included.",
+      "failures_clustered": 28,
+      "holdout": 0.7625
+    },
+    {
+      "round": 4,
+      "learned": "precision",
+      "lesson": "Use integer cents or rounding for money; never compare floats for equality.",
+      "failures_clustered": 28,
+      "holdout": 0.91875
+    }
+  ]
+}

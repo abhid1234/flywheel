@@ -1,0 +1,57 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>flywheel — the learning curve</title>
+<style>
+:root{--paper:#e7ebef;--card:#f4f6f8;--card2:#eef1f4;--ink:#141d26;--ink2:#4a5765;--ink3:#7c8894;--line:#cdd5dd;--line2:#bcc6cf;--brass:#8a6417;--green:#1f7a4d;--mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,monospace;--sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+@media(prefers-color-scheme:dark){:root{--paper:#0e141b;--card:#161f28;--card2:#1b2732;--ink:#e7edf2;--ink2:#9aa8b5;--ink3:#6a7783;--line:#26333f;--line2:#324150;--brass:#e0b452;--green:#54c088}}
+*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.6 var(--sans);-webkit-font-smoothing:antialiased;background-image:radial-gradient(circle at 1px 1px,var(--line) 1px,transparent 0);background-size:26px 26px}
+.wrap{max-width:900px;margin:0 auto;padding:44px 22px 90px}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink3);font-weight:600}
+h1{font-size:clamp(28px,4.2vw,42px);letter-spacing:-.02em;margin:10px 0 8px;font-weight:800;text-wrap:balance}
+.sub{color:var(--ink2);max-width:70ch;margin:0 0 26px;font-size:17px}.sub b{color:var(--ink)}
+.sim{display:inline-block;font-family:var(--mono);font-size:11.5px;color:var(--brass);border:1px solid color-mix(in srgb,var(--brass) 40%,transparent);border-radius:6px;padding:3px 9px;margin-bottom:18px}
+.headline{display:flex;gap:26px;align-items:baseline;flex-wrap:wrap;margin:0 0 20px}
+.big{font-size:44px;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.big .arrow{color:var(--ink3);font-weight:400;margin:0 8px}.big .up{color:var(--green)}
+.big .gain{font-size:20px;color:var(--green);font-weight:700;margin-left:6px}
+.panel{border:1px solid var(--line);border-radius:14px;background:var(--card);box-shadow:0 1px 2px rgba(20,29,38,.04),0 8px 30px rgba(20,29,38,.06);padding:22px}
+.chart{width:100%;height:auto;display:block}
+.grid{stroke:var(--line);stroke-width:1}
+.ytick,.xtick{fill:var(--ink3);font-family:var(--mono);font-size:11px;text-anchor:middle}.ytick{text-anchor:end}
+.axis{fill:var(--ink3);font-family:var(--mono);font-size:11px}
+.curveline{fill:none;stroke:var(--brass);stroke-width:2.5;stroke-linejoin:round;stroke-linecap:round}
+.dot{fill:var(--brass);stroke:var(--card);stroke-width:2}
+.val{fill:var(--ink);font-family:var(--mono);font-size:11.5px;font-weight:700;text-anchor:middle}
+h2{font-size:16px;margin:34px 0 12px;letter-spacing:-.01em}
+ol.lessons{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+ol.lessons li{display:flex;align-items:center;gap:14px;background:var(--card);border:1px solid var(--line);border-left:3px solid var(--brass);border-radius:10px;padding:11px 15px}
+.rnd{font-family:var(--mono);font-weight:700;font-size:12px;color:var(--brass);flex-shrink:0;width:28px}
+.lesson{flex:1;font-size:14.5px;color:var(--ink)}
+.ev{font-family:var(--mono);font-size:12px;color:var(--green);flex-shrink:0}
+.note{border-left:3px solid var(--brass);padding:10px 0 10px 16px;margin:30px 0 0;color:var(--ink2);font-size:15px;max-width:78ch;line-height:1.6}.note b{color:var(--ink)}
+.foot{margin-top:24px;font-family:var(--mono);font-size:12px;color:var(--ink3);line-height:1.7}
+</style></head><body><div class="wrap">
+<div class="eyebrow">flywheel · continual learning</div>
+<h1>An agent that gets better at its job — by learning from its own mistakes.</h1>
+<span class="sim">◑ simulated agent · mechanism demonstration · real-LLM run pending</span>
+<p class="sub">No human wrote the fixes. Each round, the system finds what the agent keeps getting wrong, distills a <b>durable lesson</b>, and adds it to the agent's standing instructions. Success is measured on a <b>sealed held-out set the agent never learns from</b> — so the climb is real generalization, not memorization.</p>
+<div class="headline">
+  <div class="big"><span>36%</span><span class="arrow">→</span><span class="up">92%</span><span class="gain">+56.3pp</span></div>
+</div>
+<div class="panel"><svg viewBox="0 0 760 320" class="chart" role="img" aria-label="Held-out success rate climbing over learning rounds">
+    <defs><linearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="var(--brass)" stop-opacity="0.28"/><stop offset="1" stop-color="var(--brass)" stop-opacity="0"/>
+    </linearGradient></defs>
+    <line x1="52" y1="276.0" x2="736" y2="276.0" class="grid"/><text x="42" y="280.0" class="ytick">0%</text><line x1="52" y1="213.0" x2="736" y2="213.0" class="grid"/><text x="42" y="217.0" class="ytick">25%</text><line x1="52" y1="150.0" x2="736" y2="150.0" class="grid"/><text x="42" y="154.0" class="ytick">50%</text><line x1="52" y1="87.0" x2="736" y2="87.0" class="grid"/><text x="42" y="91.0" class="ytick">75%</text><line x1="52" y1="24.0" x2="736" y2="24.0" class="grid"/><text x="42" y="28.0" class="ytick">100%</text>
+    <path d="M52.0,186.2 L223.0,157.9 L394.0,115.4 L565.0,83.9 L736.0,44.5 L736.0,276.0 L52.0,276.0 Z" fill="url(#fill)"/>
+    <path d="M52.0,186.2 L223.0,157.9 L394.0,115.4 L565.0,83.9 L736.0,44.5" class="curveline"/>
+    <circle cx="52.0" cy="186.2" r="4.5" class="dot"/><text x="52.0" y="174.2" class="val">36%</text><circle cx="223.0" cy="157.9" r="4.5" class="dot"/><text x="223.0" y="145.9" class="val">47%</text><circle cx="394.0" cy="115.4" r="4.5" class="dot"/><text x="394.0" y="103.4" class="val">64%</text><circle cx="565.0" cy="83.9" r="4.5" class="dot"/><text x="565.0" y="71.9" class="val">76%</text><circle cx="736.0" cy="44.5" r="4.5" class="dot"/><text x="736.0" y="32.5" class="val">92%</text><text x="52.0" y="298" class="xtick">R0</text><text x="223.0" y="298" class="xtick">R1</text><text x="394.0" y="298" class="xtick">R2</text><text x="565.0" y="298" class="xtick">R3</text><text x="736.0" y="298" class="xtick">R4</text>
+    <text x="52" y="314" class="axis">learning round →</text>
+  </svg></div>
+<h2>What the agent learned, round by round</h2>
+<ol class="lessons"><li><span class="rnd">R1</span><span class="lesson">Treat missing/null fields as expected input; default them, don't crash.</span><span class="ev">47% held-out</span></li>
+<li><span class="rnd">R2</span><span class="lesson">Parse and validate input types; never assume a string is already a number.</span><span class="ev">64% held-out</span></li>
+<li><span class="rnd">R3</span><span class="lesson">Re-check loop and slice bounds for off-by-one errors; verify the last element is included.</span><span class="ev">76% held-out</span></li>
+<li><span class="rnd">R4</span><span class="lesson">Use integer cents or rounding for money; never compare floats for equality.</span><span class="ev">92% held-out</span></li></ol>
+<p class="note"><b>This is the flywheel.</b> The loop closes on its own: work → failures → clustered patterns → a proposed lesson → a better agent → repeat. The improvement <i>compounds</i> — each lesson stacks on the last. The honest guardrails hold: the held-out set is sealed, the lesson-writer never sees the test, and only held-out gains count. <b>This run uses a simulated agent to demonstrate the mechanism and the measurement;</b> the real experiment swaps in live coding agents whose code is executed and graded inside Daytona sandboxes.</p>
+<div class="foot">40 problems (20 train / 20 sealed held-out) · 4 rounds · seed 42<br>github.com/abhid1234/flywheel · integrations/daytona/learn</div>
+</div></body></html>
