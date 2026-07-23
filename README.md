@@ -74,7 +74,11 @@ This is a research build, and its findings include what *doesn't* work yet:
 - ✅ **M0 — harvest** works on a real 440 MB / 610-file corpus in ~2 s → 837 episodes.
 - ✅ **M1 — the labeler is validated.** Run against the author's real agent-factory transcripts and cross-checked with GitHub ground truth, it recovered **3 of 4** documented failures. The one it missed was a review-stage *semantic* defect (a test that passes without testing the thing) — invisible from exit codes, and it correctly did not fabricate a signal it couldn't see.
 - ✅ **M2 — the closed loop is proven,** both ways: a proposed context note that *couldn't* fix a missing dependency was reported `helped:false` (the gate refused to certify it), and a recorded production witness, replayed unchanged after the real cause was fixed, went red → green.
-- ⏳ **M3 — the statistical arm is blocked, honestly.** Whether prompt/skill fixes move the *outcome* (not just the mechanism) needs gold-label volume the current corpus doesn't have. This is the pre-registered [KC-6 finding](#): *the mechanism works; that it moves the outcome is unproven.* Witness replay validates **environmental** fixes; **behavioural** fixes need the statistical arm. That distinction is the honest core of the project.
+- ⏳ **M3 — the statistical arm was blocked on gold-label volume** the original corpus didn't have (the pre-registered [KC-6 finding](#): *the mechanism works; that it moves the outcome is unproven*). The [`integrations/daytona`](integrations/daytona) extension attacks exactly this: it generates gold-labeled trials *by construction* by running controlled tasks in isolated cloud sandboxes, then runs the statistical arm as **RL on agent trajectories** — a live agent improving from its own graded failures. Result ([writeup](integrations/daytona/learn/FINDINGS.md)): the climb **reproduces** across independent live runs (n=3, every run +27–48pp on a sealed held-out set), while individual per-lesson attribution stays underpowered at that scale — reported honestly, not rounded up.
+
+## Extensions
+
+- **[`integrations/daytona`](integrations/daytona)** — the statistical arm made runnable: a controlled-task benchmark (6 business scenarios, A/A-gated on real sandboxes) and a full **RL-on-trajectories loop** (rollout → verifiable reward → distilled lesson → repeat), proven live. Isolated dependency; the zero-dep core is untouched.
 
 ## Design invariants
 
