@@ -1,0 +1,53 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>flywheel — RL on agent trajectories</title>
+<style>
+:root{--paper:#e7ebef;--card:#f4f6f8;--card2:#eef1f4;--ink:#141d26;--ink2:#4a5765;--ink3:#7c8894;--line:#cdd5dd;--line2:#bcc6cf;--brass:#8a6417;--green:#1f7a4d;--red:#c23b2b;--mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,monospace;--sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+@media(prefers-color-scheme:dark){:root{--paper:#0e141b;--card:#161f28;--card2:#1b2732;--ink:#e7edf2;--ink2:#9aa8b5;--ink3:#6a7783;--line:#26333f;--line2:#324150;--brass:#e0b452;--green:#54c088;--red:#f0705e}}
+*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.6 var(--sans);-webkit-font-smoothing:antialiased;background-image:radial-gradient(circle at 1px 1px,var(--line) 1px,transparent 0);background-size:26px 26px}
+.wrap{max-width:900px;margin:0 auto;padding:44px 22px 90px}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink3);font-weight:600}
+h1{font-size:clamp(26px,3.8vw,40px);letter-spacing:-.02em;margin:10px 0 8px;font-weight:800;text-wrap:balance}
+.sub{color:var(--ink2);max-width:72ch;margin:0 0 22px;font-size:16px}.sub b{color:var(--ink)}
+.sim{display:inline-block;font-family:var(--mono);font-size:11.5px;color:var(--brass);border:1px solid color-mix(in srgb,var(--brass) 40%,transparent);border-radius:6px;padding:3px 9px;margin-bottom:18px}
+.headline{display:flex;gap:20px;align-items:baseline;flex-wrap:wrap;margin:0 0 18px}
+.big{font-size:38px;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums}.big .arrow{color:var(--ink3);font-weight:400;margin:0 8px}.big .up{color:var(--green)}.big .gain{font-size:18px;color:var(--green);font-weight:700;margin-left:6px}
+.panel{border:1px solid var(--line);border-radius:14px;background:var(--card);box-shadow:0 1px 2px rgba(20,29,38,.04),0 8px 30px rgba(20,29,38,.06);padding:22px}
+svg{width:100%;height:auto;display:block}.g{stroke:var(--line);stroke-width:1}.yt,.xt{fill:var(--ink3);font-family:var(--mono);font-size:11px;text-anchor:middle}.yt{text-anchor:end}
+.axis{fill:var(--ink3);font-family:var(--mono);font-size:11px}
+.band{fill:var(--brass);opacity:.14}
+.cl{fill:none;stroke:var(--brass);stroke-width:2.5;stroke-linejoin:round;stroke-linecap:round}
+.d{fill:var(--brass);stroke:var(--card);stroke-width:2}.dr{fill:var(--card);stroke:var(--ink3);stroke-width:2}
+.val{fill:var(--ink);font-family:var(--mono);font-size:11.5px;font-weight:700;text-anchor:middle}
+.rej{fill:var(--ink3);font-family:var(--mono);font-size:10px;text-anchor:middle}
+h2{font-size:16px;margin:32px 0 12px;letter-spacing:-.01em}
+ol.lessons{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+ol.lessons li{display:flex;align-items:center;gap:14px;background:var(--card);border:1px solid var(--line);border-left:3px solid var(--brass);border-radius:10px;padding:11px 15px}
+ol.lessons li.rj{border-left-color:var(--ink3);opacity:.72}
+.rnd{font-family:var(--mono);font-weight:700;font-size:12px;color:var(--brass);flex-shrink:0;width:26px}
+ol.lessons li.rj .rnd{color:var(--ink3)}
+.lesson{flex:1;font-size:14.5px;color:var(--ink)}
+.ev{font-family:var(--mono);font-size:11.5px;flex-shrink:0}.ev.ok{color:var(--green)}.ev.no{color:var(--ink3)}
+.note{border-left:3px solid var(--brass);padding:10px 0 10px 16px;margin:28px 0 0;color:var(--ink2);font-size:14.5px;max-width:80ch;line-height:1.6}.note b{color:var(--ink)}
+.foot{margin-top:22px;font-family:var(--mono);font-size:12px;color:var(--ink3);line-height:1.7}
+</style></head><body><div class="wrap">
+<div class="eyebrow">flywheel · reinforcement learning on agent trajectories</div>
+<h1>An agent improving from its own graded runs — RL, at the context layer.</h1>
+<span class="sim">● live codex agent · real Daytona grading · LLM tokens spent</span>
+<p class="sub">Same loop as reinforcement learning: the agent attempts tasks (rollouts), earns a <b>verifiable reward</b> from hidden tests, and its policy improves from its own trajectories. The one difference from textbook RL — the update is a <b>durable lesson carried in context, not a weight change</b>. Measured on a sealed held-out set, with a 95% CI on every point.</p>
+<div class="headline"><div class="big"><span>27%</span><span class="arrow">→</span><span class="up">76%</span><span class="gain">+48.5pp</span></div>
+<div style="font-family:var(--mono);font-size:13px;color:var(--ink3)">2 lessons kept · 11 held-out tasks · 6 rollouts each</div></div>
+<div class="panel"><svg viewBox="0 0 820 340" role="img" aria-label="Held-out success over rounds with CI bands; some lessons rejected; plateau">
+    <line x1="52" y1="294.0" x2="760" y2="294.0" class="g"/><text x="43" y="298.0" class="yt">0%</text><line x1="52" y1="226.0" x2="760" y2="226.0" class="g"/><text x="43" y="230.0" class="yt">25%</text><line x1="52" y1="158.0" x2="760" y2="158.0" class="g"/><text x="43" y="162.0" class="yt">50%</text><line x1="52" y1="90.0" x2="760" y2="90.0" class="g"/><text x="43" y="94.0" class="yt">75%</text><line x1="52" y1="22.0" x2="760" y2="22.0" class="g"/><text x="43" y="26.0" class="yt">100%</text>
+    <path d="M52.0,190.6 L229.0,190.6 L406.0,113.0 L583.0,59.8 L760.0,59.8 L760.0,116.1 L583.0,116.1 L406.0,178.3 L229.0,249.0 L52.0,249.0 Z" class="band"/>
+    <path d="M52.0,219.8 L229.0,219.8 L406.0,145.6 L583.0,87.9 L760.0,87.9" class="cl"/>
+    <circle cx="52.0" cy="219.8" r="4.5" class="d"/><text x="52.0" y="207.8" class="val">27%</text><circle cx="229.0" cy="219.8" r="4.5" class="dr"/><text x="229.0" y="239.8" class="rej">rejected</text><circle cx="406.0" cy="145.6" r="4.5" class="d"/><text x="406.0" y="133.6" class="val">55%</text><circle cx="583.0" cy="87.9" r="4.5" class="d"/><text x="583.0" y="75.9" class="val">76%</text><circle cx="760.0" cy="87.9" r="4.5" class="dr"/><text x="760.0" y="107.9" class="rej">rejected</text><text x="52.0" y="316" class="xt">R0</text><text x="229.0" y="316" class="xt">R1</text><text x="406.0" y="316" class="xt">R2</text><text x="583.0" y="316" class="xt">R3</text><text x="760.0" y="316" class="xt">R4</text>
+    <text x="52" y="334" class="axis">learning round →   (shaded = 95% CI)</text>
+  </svg></div>
+<h2>What the agent tried, round by round</h2>
+<ol class="lessons"><li class="rj"><span class="rnd">R1</span><span class="lesson">Always identify and explicitly handle boundary cases—especially empty inputs—before applying operations that assume nonempty data.</span><span class="ev no">+7.6pp · under noise, rejected</span></li>
+<li class=""><span class="rnd">R2</span><span class="lesson">Handle invalid inputs explicitly and return the required sentinel value instead of allowing conversion errors to escape.</span><span class="ev ok">+27.3pp · kept</span></li>
+<li class=""><span class="rnd">R3</span><span class="lesson">Infer output ordering from the tests as part of the contract, and verify examples exactly instead of assuming “unique” means preserving input order.</span><span class="ev ok">+21.2pp · kept</span></li>
+<li class="rj"><span class="rnd">R4</span><span class="lesson">Match the output’s required precision and formatting—when examples expect `33.33`, round percentage results to two decimal places.</span><span class="ev no">+-3.0pp · under noise, rejected</span></li></ol>
+<p class="note"><b>Why this isn't a hockey-stick.</b> The gains are front-loaded — the first lesson fixes the commonest failure, each next one is rarer and worth less (diminishing returns). Two lessons were <b>rejected</b>: their held-out gain fell under the 12.1pp noise band, so they weren't credited — you can't keep an improvement you can't distinguish from noise. That's why the curve <b>plateaus below 100%</b>, not because the agent is perfect. To push the plateau higher you lower the noise floor — more held-out tasks and more rollouts, i.e. <b>more Daytona</b>. This is a live run: the codex agent wrote every solution, and each was executed against hidden tests in isolated Daytona sandboxes — a verifiable reward, not a model's self-assessment.</p>
+<div class="foot">11 sealed held-out tasks · 6 rollouts/task/round · noise band 12.1pp · backend daytona<br>github.com/abhid1234/flywheel · integrations/daytona/learn</div>
+</div></body></html>
