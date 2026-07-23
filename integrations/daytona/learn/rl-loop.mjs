@@ -19,7 +19,6 @@ import { resolveBackend } from "../lib/client.mjs";
 import { resolveAgent } from "./agent.mjs";
 import { resolveLessonWriter } from "./lesson-writer.mjs";
 import { rolloutSet, rolloutTask } from "./rollout.mjs";
-import { TRAIN, HOLDOUT } from "./codegen-tasks.mjs";
 import { renderCurve } from "./curve-report.mjs";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
@@ -37,6 +36,7 @@ function parse(argv) {
     else if (k === "--agent") a.agent = argv[++i];
     else if (k === "--writer") a.writer = argv[++i];
     else if (k === "--seed") a.seed = Number(argv[++i]);
+    else if (k === "--taskset") a.taskset = argv[++i];
     else if (k === "--out") a.out = argv[++i];
   }
   return a;
@@ -45,6 +45,9 @@ function parse(argv) {
 async function main() {
   const args = parse(process.argv.slice(2));
   const rand = rng(args.seed);
+  // Task set: "codegen" (easy) or "conventions" (hard — headroom for a strong model).
+  const tasksFile = args.taskset === "conventions" ? "./conventions-tasks.mjs" : "./codegen-tasks.mjs";
+  const { TRAIN, HOLDOUT } = await import(tasksFile);
   const backend = resolveBackend();
   const agent = resolveAgent(args.agent);
   const writer = resolveLessonWriter(args.writer);
