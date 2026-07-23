@@ -1,0 +1,83 @@
+{
+  "experiment": "credit-assignment",
+  "agent": "simulated",
+  "seed": 7,
+  "steps": 12,
+  "forks": 8,
+  "critical": 4,
+  "pivot": 4,
+  "checkpoints": [
+    {
+      "checkpoint": 1,
+      "forks": 8,
+      "pass": 6,
+      "passRate": 0.75
+    },
+    {
+      "checkpoint": 2,
+      "forks": 8,
+      "pass": 7,
+      "passRate": 0.875
+    },
+    {
+      "checkpoint": 3,
+      "forks": 8,
+      "pass": 5,
+      "passRate": 0.625
+    },
+    {
+      "checkpoint": 4,
+      "forks": 8,
+      "pass": 0,
+      "passRate": 0
+    },
+    {
+      "checkpoint": 5,
+      "forks": 8,
+      "pass": 0,
+      "passRate": 0
+    },
+    {
+      "checkpoint": 6,
+      "forks": 8,
+      "pass": 0,
+      "passRate": 0
+    },
+    {
+      "checkpoint": 7,
+      "forks": 8,
+      "pass": 0,
+      "passRate": 0
+    },
+    {
+      "checkpoint": 8,
+      "forks": 8,
+      "pass": 1,
+      "passRate": 0.125
+    },
+    {
+      "checkpoint": 9,
+      "forks": 8,
+      "pass": 1,
+      "passRate": 0.125
+    },
+    {
+      "checkpoint": 10,
+      "forks": 8,
+      "pass": 0,
+      "passRate": 0
+    },
+    {
+      "checkpoint": 11,
+      "forks": 8,
+      "pass": 1,
+      "passRate": 0.125
+    },
+    {
+      "checkpoint": 12,
+      "forks": 8,
+      "pass": 2,
+      "passRate": 0.25
+    }
+  ]
+}
