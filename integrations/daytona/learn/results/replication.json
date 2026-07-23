@@ -1,6 +1,6 @@
 {
   "agg": {
-    "n": 3,
+    "n": 4,
     "baseline": {
       "mean": 0.2727272727272727,
       "lo": 0.2727272727272727,
@@ -8,62 +8,68 @@
       "vals": [
         0.2727272727272727,
         0.2727272727272727,
+        0.2727272727272727,
         0.2727272727272727
       ]
     },
     "final": {
-      "mean": 0.6414141414141414,
+      "mean": 0.6765151515151515,
       "lo": 0.5454545454545454,
-      "hi": 0.7575757575757576,
+      "hi": 0.7818181818181819,
       "vals": [
         0.7575757575757576,
         0.6212121212121212,
-        0.5454545454545454
+        0.5454545454545454,
+        0.7818181818181819
       ]
     },
     "gain": {
-      "mean": 0.3686868686868687,
+      "mean": 0.4037878787878788,
       "lo": 0.2727272727272727,
-      "hi": 0.48484848484848486
+      "hi": 0.5090909090909091
     },
     "modes": [
       {
-        "mode": "empty-none",
-        "kept": 2,
-        "tried": 3,
-        "gains": [
-          0.0757575757575758,
-          0.16666666666666669,
-          0.2727272727272727
-        ]
-      },
-      {
         "mode": "sorted-unique",
-        "kept": 2,
-        "tried": 3,
+        "kept": 3,
+        "tried": 4,
         "gains": [
           0.21212121212121215,
           0.18181818181818182,
-          0.10606060606060608
+          0.10606060606060608,
+          0.2272727272727273
+        ]
+      },
+      {
+        "mode": "empty-none",
+        "kept": 2,
+        "tried": 4,
+        "gains": [
+          0.0757575757575758,
+          0.16666666666666669,
+          0.2727272727272727,
+          -0.009090909090909094
         ]
       },
       {
         "mode": "parse-none",
-        "kept": 1,
-        "tried": 3,
+        "kept": 2,
+        "tried": 4,
         "gains": [
           0.2727272727272727,
           0.10606060606060602,
-          0.09090909090909094
+          0.09090909090909094,
+          0.28181818181818186
         ]
       },
       {
         "mode": "round-2dp",
         "kept": 0,
-        "tried": 2,
+        "tried": 3,
         "gains": [
           -0.030303030303030276,
-          -0.045454545454545414
+          -0.045454545454545414,
+          0.09090909090909083
         ]
       }
     ]
@@ -172,6 +178,44 @@
           "gain": 0.10606060606060608,
           "status": "rejected",
           "cluster": 6
+        }
+      ]
+    },
+    {
+      "baseline": 0.2727272727272727,
+      "final": 0.7818181818181819,
+      "lessons": [
+        {
+          "round": 1,
+          "mode": "empty-none",
+          "lesson": "Explicitly handle empty inputs according to the required contract before calling operations like `max` that require nonempty collections.",
+          "gain": -0.009090909090909094,
+          "status": "rejected",
+          "cluster": 20
+        },
+        {
+          "round": 2,
+          "mode": "parse-none",
+          "lesson": "Handle invalid inputs explicitly and return the required sentinel value instead of allowing conversion errors to escape.",
+          "gain": 0.28181818181818186,
+          "status": "learned",
+          "cluster": 20
+        },
+        {
+          "round": 3,
+          "mode": "sorted-unique",
+          "lesson": "Infer the full output contract from the tests—here, “unique values” must be returned in sorted order, not merely deduplicated in input order.",
+          "gain": 0.2272727272727273,
+          "status": "learned",
+          "cluster": 10
+        },
+        {
+          "round": 4,
+          "mode": "round-2dp",
+          "lesson": "Match the required output precision by rounding computed results as implied by the examples and exact tests.",
+          "gain": 0.09090909090909083,
+          "status": "rejected",
+          "cluster": 9
         }
       ]
     }

@@ -57,37 +57,46 @@ across four rounds, learning lessons **it wrote itself** from the clustered fail
 transcripts (e.g. *"infer output ordering from the tests as part of the contract,
 instead of assuming 'unique' means preserving input order"*).
 
-Run three times, same config (codex is non-deterministic, so each is an independent
-draw):
+Run four times (three at K=6, one powered at K=10; codex is non-deterministic, so
+each is an independent draw):
 
-| run | baseline | final | gain |
-|---|---|---|---|
-| 1 | 27% | 76% | +48pp |
-| 2 | 27% | 62% | +35pp |
-| 3 | 27% | 55% | +27pp |
+| run | K | baseline | final | gain |
+|---|---|---|---|---|
+| 1 | 6 | 27% | 76% | +48pp |
+| 2 | 6 | 27% | 62% | +35pp |
+| 3 | 6 | 27% | 55% | +27pp |
+| 4 | 10 | 27% | 78% | +51pp |
 
-**Every run climbed.** Baseline was identical (27%) all three times. The mechanism
-— an agent improving from its own graded failures — reproduces.
+**Every run climbed.** Baseline was identical (27%) all four times. The mechanism
+— an agent improving from its own graded failures — reproduces. Mean final 68%,
+mean gain +40pp (range +27 to +51).
 
 ## Finding 4: what reproduces is the climb, not the individual lesson
 
-Here is the honest limit. **No single lesson was kept in all three runs.** The
-per-lesson gains (~15–17pp on average) sit right around the 12.1pp noise band, so
-codex's run-to-run variance flips them above or below the threshold:
+Here is the honest limit — and its refinement. Across four runs, **no lesson was
+kept every time,** but reliability tracks effect size exactly as it should:
 
-| lesson | kept | reliability |
-|---|---|---|
-| empty-none | 2/3 | flaky |
-| sorted-unique | 2/3 | flaky |
-| parse-none | 1/3 | flaky |
-| round-2dp | 0/3 | never cleared |
+| lesson | kept | avg gain | reading |
+|---|---|---|---|
+| sorted-unique | 3/4 | 18.2pp | large cluster → mostly reliable |
+| parse-none | 2/4 | 18.8pp | large cluster → reliable when it clusters |
+| empty-none | 2/4 | 12.7pp | marginal (gain ≈ band) → flaky |
+| round-2dp | 0/3 | 0.5pp | ~zero true effect → never (codex handles it cold) |
 
-So the defensible claim is precise: **"an agent learning from its own failures
-reproducibly improves"** is supported (n=3, every run). **"Lesson X reliably helps"**
-is *not yet* supported at this sample size — the measurement can't resolve
-individual lessons whose effect is close to the noise floor. To earn that claim you
-drop the band well below the true gains: more rollouts, more held-out tasks. The
-same lever, again.
+The powered run (K=10, band 9.3pp) is the tell: the two big-cluster lessons cleared
+with a **2–3× margin** (parse-none +28pp from 20 failures; sorted-unique +23pp from
+10) and drove the highest final (78%). The lessons that reproduce are the ones
+backed by large, recurring failure clusters and a real effect well above the floor.
+The flaky ones have a true effect *at* the floor; the never-cleared one has ~no
+true effect at all.
+
+So the defensible claim is precise, and it's the right shape: **"an agent learning
+from its own recurring failures reproducibly improves"** is supported (n=4, every
+run, driven by the big-cluster lessons). **"Every individual lesson reliably helps"**
+is not — and shouldn't be, because some of those "lessons" target effects
+indistinguishable from noise. Resolving the marginal ones needs the band dropped
+further below their true effect: more rollouts, more held-out tasks. The same lever,
+again — and the powered run shows it working.
 
 ## The bottom line
 

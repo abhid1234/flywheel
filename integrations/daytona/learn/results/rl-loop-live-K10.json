@@ -1,0 +1,103 @@
+{
+  "experiment": "rl-on-trajectories",
+  "agent": "codex",
+  "lesson_writer": "codex",
+  "backend": "daytona",
+  "holdout": 11,
+  "train": 9,
+  "repeats": 10,
+  "noise_band_pp": 9.3,
+  "baseline": 0.2727272727272727,
+  "final": 0.7818181818181819,
+  "gain_pp": 50.9,
+  "lessons_kept": 2,
+  "policy": [
+    {
+      "mode": "parse-none",
+      "text": "Handle invalid inputs explicitly and return the required sentinel value instead of allowing conversion errors to escape."
+    },
+    {
+      "mode": "sorted-unique",
+      "text": "Infer the full output contract from the tests—here, “unique values” must be returned in sorted order, not merely deduplicated in input order."
+    }
+  ],
+  "curve": [
+    {
+      "round": 0,
+      "mean": 0.2727272727272727,
+      "lo": 0.18949865833327717,
+      "hi": 0.35595588712126824,
+      "status": "baseline"
+    },
+    {
+      "round": 1,
+      "mean": 0.2727272727272727,
+      "lo": 0.18949865833327717,
+      "hi": 0.35595588712126824,
+      "status": "rejected",
+      "lesson": "Explicitly handle empty inputs according to the required contract before calling operations like `max` that require nonempty collections.",
+      "gain": -0.009090909090909094
+    },
+    {
+      "round": 2,
+      "mean": 0.5545454545454546,
+      "lo": 0.4616637875863613,
+      "hi": 0.6474271215045478,
+      "status": "learned",
+      "lesson": "Handle invalid inputs explicitly and return the required sentinel value instead of allowing conversion errors to escape.",
+      "gain": 0.28181818181818186
+    },
+    {
+      "round": 3,
+      "mean": 0.7818181818181819,
+      "lo": 0.7046351400383182,
+      "hi": 0.8590012235980455,
+      "status": "learned",
+      "lesson": "Infer the full output contract from the tests—here, “unique values” must be returned in sorted order, not merely deduplicated in input order.",
+      "gain": 0.2272727272727273
+    },
+    {
+      "round": 4,
+      "mean": 0.7818181818181819,
+      "lo": 0.7046351400383182,
+      "hi": 0.8590012235980455,
+      "status": "rejected",
+      "lesson": "Match the required output precision by rounding computed results as implied by the examples and exact tests.",
+      "gain": 0.09090909090909083
+    }
+  ],
+  "lessons": [
+    {
+      "round": 1,
+      "mode": "empty-none",
+      "lesson": "Explicitly handle empty inputs according to the required contract before calling operations like `max` that require nonempty collections.",
+      "gain": -0.009090909090909094,
+      "status": "rejected",
+      "cluster": 20
+    },
+    {
+      "round": 2,
+      "mode": "parse-none",
+      "lesson": "Handle invalid inputs explicitly and return the required sentinel value instead of allowing conversion errors to escape.",
+      "gain": 0.28181818181818186,
+      "status": "learned",
+      "cluster": 20
+    },
+    {
+      "round": 3,
+      "mode": "sorted-unique",
+      "lesson": "Infer the full output contract from the tests—here, “unique values” must be returned in sorted order, not merely deduplicated in input order.",
+      "gain": 0.2272727272727273,
+      "status": "learned",
+      "cluster": 10
+    },
+    {
+      "round": 4,
+      "mode": "round-2dp",
+      "lesson": "Match the required output precision by rounding computed results as implied by the examples and exact tests.",
+      "gain": 0.09090909090909083,
+      "status": "rejected",
+      "cluster": 9
+    }
+  ]
+}
