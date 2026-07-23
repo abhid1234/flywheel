@@ -1,0 +1,82 @@
+{
+  "experiment": "rl-on-trajectories",
+  "agent": "fake",
+  "lesson_writer": "fake",
+  "backend": "daytona",
+  "holdout": 8,
+  "train": 9,
+  "repeats": 8,
+  "noise_band_pp": 12.3,
+  "baseline": 0.296875,
+  "final": 0.546875,
+  "gain_pp": 25,
+  "lessons_kept": 1,
+  "policy": [
+    {
+      "mode": "null-fields",
+      "text": "Treat missing or null fields as expected input — read them defensively and default them; never index a key that may be absent."
+    }
+  ],
+  "curve": [
+    {
+      "round": 0,
+      "mean": 0.296875,
+      "lo": 0.18493915869633457,
+      "hi": 0.4088108413036654,
+      "status": "baseline"
+    },
+    {
+      "round": 1,
+      "mean": 0.546875,
+      "lo": 0.424914518159121,
+      "hi": 0.668835481840879,
+      "status": "learned",
+      "lesson": "Treat missing or null fields as expected input — read them defensively and default them; never index a key that may be absent.",
+      "gain": 0.25
+    },
+    {
+      "round": 2,
+      "mean": 0.546875,
+      "lo": 0.424914518159121,
+      "hi": 0.668835481840879,
+      "status": "rejected",
+      "lesson": "Handle the empty-input case explicitly before the main logic; don't index element 0 of a possibly-empty sequence.",
+      "gain": 0.09375
+    },
+    {
+      "round": 3,
+      "mean": 0.546875,
+      "lo": 0.424914518159121,
+      "hi": 0.668835481840879,
+      "status": "rejected",
+      "lesson": "Parse and validate input types explicitly; never assume a string is already a number before doing arithmetic.",
+      "gain": 0.09375
+    }
+  ],
+  "lessons": [
+    {
+      "round": 1,
+      "mode": "null-fields",
+      "lesson": "Treat missing or null fields as expected input — read them defensively and default them; never index a key that may be absent.",
+      "gain": 0.25,
+      "status": "learned",
+      "cluster": 16
+    },
+    {
+      "round": 2,
+      "mode": "edge-empty",
+      "lesson": "Handle the empty-input case explicitly before the main logic; don't index element 0 of a possibly-empty sequence.",
+      "gain": 0.09375,
+      "status": "rejected",
+      "cluster": 16
+    },
+    {
+      "round": 3,
+      "mode": "type-coercion",
+      "lesson": "Parse and validate input types explicitly; never assume a string is already a number before doing arithmetic.",
+      "gain": 0.09375,
+      "status": "rejected",
+      "cluster": 16
+    }
+  ]
+}

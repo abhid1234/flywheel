@@ -35,7 +35,26 @@ function chart(curve) {
   </svg>`;
 }
 
+// Describe honestly what was real vs. simulated in THIS run.
+function provenance(report) {
+  const agent = report.agent, backend = report.backend, live = agent === "codex" || agent === "claude";
+  if (agent === "simulated") return {
+    badge: "◑ simulated agent · mechanism model · real Daytona+LLM run gated",
+    note: "This run simulates the agent to demonstrate the mechanism and the measurement; the real experiment rolls out a live agent in Daytona sandboxes and grades its code against hidden tests.",
+  };
+  if (live) return {
+    badge: `● live ${agent} agent · real Daytona grading · LLM tokens spent`,
+    note: `This is a live run: the ${agent} agent wrote every solution, and each was executed against hidden tests in isolated Daytona sandboxes — a verifiable reward, not a model's self-assessment.`,
+  };
+  if (backend === "daytona") return {
+    badge: "◑ reference agent · REAL Daytona grading · no LLM spend",
+    note: "A free plumbing proof: the code-writer used stored reference solutions, but the grading was REAL — real Daytona sandboxes running the hidden tests. Only the model was stubbed; swap --agent codex for a live run and this same pipeline spends tokens instead.",
+  };
+  return { badge: "◑ offline mock", note: "Offline mock run — no sandboxes." };
+}
+
 export function renderCurve(report) {
+  const prov = provenance(report);
   const lessons = (report.lessons || []).map((l) => {
     const kept = l.status === "learned";
     return `<li class="${kept ? "" : "rj"}"><span class="rnd">R${l.round}</span><span class="lesson">${esc(l.lesson)}</span>` +
@@ -76,14 +95,14 @@ ol.lessons li.rj .rnd{color:var(--ink3)}
 </style></head><body><div class="wrap">
 <div class="eyebrow">flywheel · reinforcement learning on agent trajectories</div>
 <h1>An agent improving from its own graded runs — RL, at the context layer.</h1>
-<span class="sim">◑ simulated agent · faithful model · real Daytona+LLM run gated</span>
+<span class="sim">${esc(prov.badge)}</span>
 <p class="sub">Same loop as reinforcement learning: the agent attempts tasks (rollouts), earns a <b>verifiable reward</b> from hidden tests, and its policy improves from its own trajectories. The one difference from textbook RL — the update is a <b>durable lesson carried in context, not a weight change</b>. Measured on a sealed held-out set, with a 95% CI on every point.</p>
 <div class="headline"><div class="big"><span>${Math.round(report.baseline * 100)}%</span><span class="arrow">→</span><span class="up">${Math.round(report.final * 100)}%</span><span class="gain">+${report.gain_pp}pp</span></div>
 <div style="font-family:var(--mono);font-size:13px;color:var(--ink3)">${report.lessons_kept} lessons kept · ${report.holdout} held-out tasks · ${report.repeats} rollouts each</div></div>
 <div class="panel">${chart(report.curve)}</div>
 <h2>What the agent tried, round by round</h2>
 <ol class="lessons">${lessons}</ol>
-<p class="note"><b>Why this isn't a hockey-stick.</b> The gains are front-loaded — the first lesson fixes the commonest failure, each next one is rarer and worth less (diminishing returns). Two lessons were <b>rejected</b>: their held-out gain fell under the ${report.noise_band_pp}pp noise band, so they weren't credited — you can't keep an improvement you can't distinguish from noise. That's why the curve <b>plateaus below 100%</b>, not because the agent is perfect. To push the plateau higher you lower the noise floor — more held-out tasks and more rollouts, i.e. <b>more Daytona</b>. <b>This run simulates the mechanism;</b> the real experiment rolls out a live agent in Daytona sandboxes and grades its code against hidden tests.</p>
-<div class="foot">${report.holdout} sealed held-out tasks · ${report.repeats} rollouts/task/round · noise band ${report.noise_band_pp}pp · seed ${report.seed}<br>github.com/abhid1234/flywheel · integrations/daytona/learn</div>
+<p class="note"><b>Why this isn't a hockey-stick.</b> The gains are front-loaded — the first lesson fixes the commonest failure, each next one is rarer and worth less (diminishing returns). Two lessons were <b>rejected</b>: their held-out gain fell under the ${report.noise_band_pp}pp noise band, so they weren't credited — you can't keep an improvement you can't distinguish from noise. That's why the curve <b>plateaus below 100%</b>, not because the agent is perfect. To push the plateau higher you lower the noise floor — more held-out tasks and more rollouts, i.e. <b>more Daytona</b>. ${esc(prov.note)}</p>
+<div class="foot">${report.holdout} sealed held-out tasks · ${report.repeats} rollouts/task/round · noise band ${report.noise_band_pp}pp${report.backend ? ` · backend ${esc(report.backend)}` : ""}<br>github.com/abhid1234/flywheel · integrations/daytona/learn</div>
 </div></body></html>`;
 }

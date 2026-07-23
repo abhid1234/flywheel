@@ -1,82 +1,71 @@
-# The Learning Curve — flywheel's continual-learning experiment
+# RL on agent trajectories — the finished loop
 
-The static benchmark next door proves flywheel can **measure** whether a fix
-helped. This proves the thing the whole project is named for: **an agent that
-improves from its own production traces, round over round, and compounds.**
-
-## What "continual learning" actually requires
-
-A single before/after isn't learning — a human supplied both sides. Real
-continual learning is a loop that closes *autonomously* and *compounds*:
+The flywheel thesis, run as reinforcement learning at the **context layer**: an
+agent attempts coding tasks (rollouts), earns a **verifiable reward** from hidden
+tests run in Daytona sandboxes, and its policy improves from its own graded
+trajectories. The policy update is a **durable lesson carried in context**, not a
+weight change — no GPUs, no gradients.
 
 ```
-   ┌─────────────────────────────────────────────────────────┐
-   │  agent attempts real tasks in isolated Daytona sandboxes │
-   │            ↓                                             │
-   │  some fail → harvest transcripts → cluster the recurring │
-   │  mistake → the LLM writes a DURABLE LESSON → append it   │
-   │  to the agent's standing instructions (its memory)       │
-   │            ↓                                             │
-   │  re-measure on a SEALED held-out set → success climbs    │
-   └────────────────────────── repeat ───────────────────────┘
+baseline held-out → [ roll out train tasks → reward → cluster failures →
+                      distill a lesson → A/A-gate on sealed held-out → keep/reject ] → repeat
 ```
 
-The deliverable is a **curve that climbs**, not a bar that moves. Run
-`node experiment.mjs` to see it (simulated agent, offline, reproducible).
+## The seven pieces (all built)
 
-## Why this needs Daytona, and at scale
+| # | Piece | File | Backend / cost |
+|---|---|---|---|
+| 1 | **Rollout engine** — K parallel attempts/task in Daytona | `rollout.mjs` | Daytona compute |
+| 2 | **Agent** — writes code from spec + current lessons | `agent.mjs` | `fake` (free) · `codex`/`claude` (tokens) |
+| 3 | **Lesson-writer** — distills one lesson per failure cluster | `lesson-writer.mjs` | `fake` (free) · `codex`/`claude` (tokens) |
+| 4 | **The loop** — accumulate lessons, A/A-gate each | `rl-loop.mjs` | — |
+| 5 | **Task set** — code-gen tasks w/ hidden tests, cold/fixed refs | `codegen-tasks.mjs` | free |
+| 6 | **Credit assignment** — snapshot/fork to localize the critical step | `credit-assignment.mjs` | prototyped |
+| 7 | **Unattended runner** — nightly rounds on the mini | `deploy/` | free (fake) |
 
-The tasks that make continual learning meaningful are ones where the agent's
-output must be **executed** to know if it's right — code against a hidden test
-suite, a script against real inputs, a query against real data. That execution
-is untrusted (an agent wrote it) and has to run in parallel by the hundreds.
-That is exactly what Daytona is for: sub-second isolated sandboxes, massively
-parallel, disposable. The bigger the experiment, the more it needs that.
+## Run it — free, on real Daytona
 
-## The two backends
-
-- **`--agent simulated`** (default) — a faithful *model* of how an agent improves
-  as relevant lessons enter its instructions, with real run-to-run noise. It is
-  clearly labelled as a mechanism demonstration; it proves the loop, the sealing,
-  and the visualization without spending a cent.
-- **`--agent daytona`** (the real experiment) — each attempt spins a sandbox,
-  runs a live coding agent (`codex`/`claude`) on the problem with the current
-  instruction set, executes its code against the hidden tests, and grades it.
-  The lesson at each round is written by the LLM from the clustered failing
-  transcripts. **This costs LLM tokens, not just sandbox compute** — see below.
-
-## The honesty guardrails (inherited from the core project)
-
-1. **Sealed held-out set** — the problems used to measure improvement are never
-   seen during learning. The climb is generalization, not memorization.
-2. **The LLM writes the lesson; it never writes the success criterion.** The
-   criterion is the held-out tests — fixed, and out of the model's reach.
-3. **Only held-out gains count.** Training-set improvement is ignored.
-4. **A/A noise floor** — the same gate as the benchmark: an improvement smaller
-   than run-to-run noise is not credited.
-5. **Pre-registered kill criterion** — if the curve doesn't climb past the noise
-   band, that's the honest KC-6 result, reported as-is. A flat curve is a finding.
-
-## The bigger experiment (design)
-
-| dimension | demonstration (now) | the real experiment |
-|---|---|---|
-| agent | simulated model | live `codex`/`claude` in Daytona |
-| tasks | 40 abstract problems | 100–500 real code-gen-to-spec tasks with hidden tests |
-| grading | failure-mode model | actual test-suite pass/fail in the sandbox |
-| lessons | from a lesson bank | written by the LLM from clustered transcripts |
-| scale | instant, free | thousands of graded agent-runs, parallel in Daytona |
-| output | the learning curve | the same curve — but earned |
-
-**Cost note (honest):** Daytona sandbox compute for even a large run is a few
-dollars. The real spend is the **LLM API tokens** for the agent attempts and the
-lesson-writer — that scales with tasks × rounds × repeats and can reach real
-money. The design is built to start small (a dozen tasks, 3 rounds, a cheap
-model) to earn a first real curve, then scale once it's proven.
-
-## Run it
+The whole pipeline runs end-to-end with **zero token spend**: a `fake` agent
+emits each task's cold/fixed reference, but the grading is **real** — real
+sandboxes, real `python3` executing the hidden tests. It proves every seam works
+before a single LLM call.
 
 ```bash
-node experiment.mjs --rounds 6 --repeats 8      # simulated, free, reproducible
-open ~/.flywheel/daytona/learn/learning-curve.html
+set -a; . ~/.flywheel/daytona.env; set +a
+node rl-loop.mjs --rounds 6 --K 8 --agent fake --writer fake
+open ~/.flywheel/daytona/learn/rl-loop.html
 ```
+
+## Run it for real — the token spend
+
+Swap the agent + lesson-writer to a live model. Now the agent actually writes the
+code and the LLM actually distills each lesson from the failing transcripts:
+
+```bash
+node rl-loop.mjs --rounds 6 --K 8 --agent codex --writer codex
+```
+
+This is the only place the system spends. Cost scales with tasks × rounds × K.
+Start small (fewer rounds, K=5, a cheap model) to earn a first real curve, then
+scale. The banner prints a ⚠ before any token-spending run.
+
+## The honesty guardrails
+
+- **Sealed held-out** — the measured tasks are never learned from; the climb is
+  generalization, not memorization.
+- **The LLM writes the lesson; it never writes the success criterion** — the
+  hidden tests are fixed and out of reach.
+- **A/A noise floor** — a lesson whose held-out gain doesn't clear the measured
+  band is **not kept**. That is why the curve plateaus below 100%.
+- **The plateau is the message.** To push it higher, lower the noise floor: more
+  held-out tasks and more rollouts — i.e. more Daytona. The bigger the compute,
+  the further the curve can honestly climb.
+
+## Deploy nightly on the mini (#7)
+
+```bash
+cp deploy/com.abhi.flywheel-rl.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.abhi.flywheel-rl.plist   # defaults to the free path
+```
+Daytona runs the sandboxes in the cloud; the mini only coordinates, so the loop
+completes with the laptop closed.

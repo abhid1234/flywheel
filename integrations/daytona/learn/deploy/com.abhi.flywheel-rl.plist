@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  flywheel RL loop — nightly unattended run on the Mac mini (#7).
+  Install:
+    cp com.abhi.flywheel-rl.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.abhi.flywheel-rl.plist
+  Defaults to the FREE path (fake agent + real Daytona grading). To run the real
+  token-spending experiment, add FLYWHEEL_RL_AGENT / FLYWHEEL_RL_WRITER = codex
+  to EnvironmentVariables below — an explicit opt-in.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.abhi.flywheel-rl</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>$HOME/Workspace/flywheel/integrations/daytona/learn/deploy/flywheel-rl.sh</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>/opt/homebrew/opt/node@22/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+    <key>FLYWHEEL_RL_AGENT</key><string>fake</string>
+    <key>FLYWHEEL_RL_WRITER</key><string>fake</string>
+  </dict>
+  <key>StartCalendarInterval</key>
+  <dict><key>Hour</key><integer>4</integer><key>Minute</key><integer>30</integer></dict>
+  <key>StandardOutPath</key><string>/tmp/flywheel-rl.out</string>
+  <key>StandardErrorPath</key><string>/tmp/flywheel-rl.err</string>
+  <key>RunAtLoad</key><false/>
+</dict>
+</plist>
