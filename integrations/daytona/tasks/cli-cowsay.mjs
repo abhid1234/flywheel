@@ -10,7 +10,10 @@ export const task = {
     const ve = "/tmp/flywheel-cli";
     const setup = [`rm -rf ${ve} && python3 -m venv ${ve}`];
     const fix = arm === "after" ? [`${ve}/bin/pip install -q cowsay`] : [];
-    const witness = [`${ve}/bin/cowsay hi`];
+    // `-t` is required by modern cowsay; without it an INSTALLED tool exits 2 on
+    // bad args. With it, the witness cleanly separates "missing" (exit 127) from
+    // "present" (exit 0) — which is the command_not_found signal we're measuring.
+    const witness = [`${ve}/bin/cowsay -t hi`];
     return [...setup, ...fix, ...witness];
   },
   reproducedFailure(result) { return (result?.exitCode ?? 1) !== 0; },
