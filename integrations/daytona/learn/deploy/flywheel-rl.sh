@@ -26,10 +26,15 @@ WRITER="${FLYWHEEL_RL_WRITER:-fake}"
 ROUNDS="${FLYWHEEL_RL_ROUNDS:-6}"
 K="${FLYWHEEL_RL_K:-8}"
 
+# The conventions task set is where a strong model actually has headroom to learn
+# (it aces the easy codegen tasks at baseline → nothing to learn). Default to it.
+TASKSET="${FLYWHEEL_RL_TASKSET:-conventions}"
+CONCURRENCY="${FLYWHEEL_RL_CONCURRENCY:-6}"
+
 cd "$REPO" && git pull -q --ff-only 2>/dev/null || true
 
-echo "$(date -u +%FT%TZ) starting RL loop (agent=$AGENT writer=$WRITER rounds=$ROUNDS K=$K)" >> "$LOG_DIR/rl.log"
-node "$LEARN/rl-loop.mjs" --rounds "$ROUNDS" --K "$K" --concurrency 8 \
+echo "$(date -u +%FT%TZ) starting RL loop (taskset=$TASKSET agent=$AGENT writer=$WRITER rounds=$ROUNDS K=$K)" >> "$LOG_DIR/rl.log"
+node "$LEARN/rl-loop.mjs" --taskset "$TASKSET" --rounds "$ROUNDS" --K "$K" --concurrency "$CONCURRENCY" \
   --agent "$AGENT" --writer "$WRITER" --out "$LOG_DIR" \
   >> "$LOG_DIR/rl.log" 2>> "$LOG_DIR/rl.err" || echo "$(date -u +%FT%TZ) run failed" >> "$LOG_DIR/rl.err"
 echo "$(date -u +%FT%TZ) done → $LOG_DIR/rl-loop.html" >> "$LOG_DIR/rl.log"

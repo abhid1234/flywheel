@@ -21,8 +21,11 @@
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key><string>/opt/homebrew/opt/node@22/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
-    <key>FLYWHEEL_RL_AGENT</key><string>fake</string>
-    <key>FLYWHEEL_RL_WRITER</key><string>fake</string>
+    <key>FLYWHEEL_RL_AGENT</key><string>codex</string>
+    <key>FLYWHEEL_RL_WRITER</key><string>codex</string>
+    <key>FLYWHEEL_RL_TASKSET</key><string>conventions</string>
+    <key>FLYWHEEL_RL_ROUNDS</key><string>4</string>
+    <key>FLYWHEEL_RL_K</key><string>6</string>
   </dict>
   <key>StartCalendarInterval</key>
   <dict><key>Hour</key><integer>4</integer><key>Minute</key><integer>30</integer></dict>

@@ -124,6 +124,47 @@ export const TASKS = [
     check: "from solution import solve\nassert solve(1,6)==0.17\nassert solve(1,3)==0.33",
     cold: "def solve(x,t):\n    return x/t",
     fixed: "def solve(x,t):\n    return round(x/t,2)" },
+
+  // ---- positions are 1-INDEXED (not Python's 0-indexed) ----
+  { id: "nth-item", mode: "one-indexed", split: "train",
+    spec: "solve(items, n) → the item at position n.",
+    check: "from solution import solve\nassert solve(['a','b','c'],1)=='a'\nassert solve(['a','b','c'],3)=='c'",
+    cold: "def solve(i,n):\n    return i[n]",
+    fixed: "def solve(i,n):\n    return i[n-1]" },
+  { id: "nth-char", mode: "one-indexed", split: "holdout",
+    spec: "solve(s, n) → the character at position n.",
+    check: "from solution import solve\nassert solve('hello',1)=='h'\nassert solve('hello',5)=='o'",
+    cold: "def solve(s,n):\n    return s[n]",
+    fixed: "def solve(s,n):\n    return s[n-1]" },
+  { id: "nth-line", mode: "one-indexed", split: "holdout",
+    spec: "solve(text, n) → line number n of a newline-separated string.",
+    check: "from solution import solve\nassert solve('a\\nb\\nc',1)=='a'\nassert solve('a\\nb\\nc',2)=='b'",
+    cold: "def solve(t,n):\n    return t.split('\\n')[n]",
+    fixed: "def solve(t,n):\n    return t.split('\\n')[n-1]" },
+
+  // ---- out-of-range / negative index → None, never Python wraparound ----
+  { id: "at-guard", mode: "range-guard", split: "train",
+    spec: "solve(items, i) → the item at index i (0-based), or None if i is out of range.",
+    check: "from solution import solve\nassert solve([10,20,30],1)==20\nassert solve([10,20,30],5)is None\nassert solve([10,20,30],-1)is None",
+    cold: "def solve(a,i):\n    return a[i]",
+    fixed: "def solve(a,i):\n    return a[i] if 0<=i<len(a) else None" },
+  { id: "get-guard", mode: "range-guard", split: "holdout",
+    spec: "solve(s, i) → character i of string s (0-based), or None if out of range.",
+    check: "from solution import solve\nassert solve('abc',0)=='a'\nassert solve('abc',9)is None\nassert solve('abc',-2)is None",
+    cold: "def solve(s,i):\n    return s[i]",
+    fixed: "def solve(s,i):\n    return s[i] if 0<=i<len(s) else None" },
+
+  // ---- string matching is CASE-INSENSITIVE ----
+  { id: "contains-ci", mode: "case-insensitive", split: "train",
+    spec: "solve(words, target) → True if target is in the list of words.",
+    check: "from solution import solve\nassert solve(['Apple','Pear'],'apple')==True\nassert solve(['Apple'],'PEAR')==False",
+    cold: "def solve(w,t):\n    return t in w",
+    fixed: "def solve(w,t):\n    return t.lower() in [x.lower() for x in w]" },
+  { id: "index-ci", mode: "case-insensitive", split: "holdout",
+    spec: "solve(words, target) → the index of target in words, or -1 if absent.",
+    check: "from solution import solve\nassert solve(['Cat','Dog'],'dog')==1\nassert solve(['Cat'],'CAT')==0\nassert solve(['Cat'],'x')==-1",
+    cold: "def solve(w,t):\n    return w.index(t) if t in w else -1",
+    fixed: "def solve(w,t):\n    low=[x.lower() for x in w]\n    return low.index(t.lower()) if t.lower() in low else -1" },
 ];
 
 export const HOLDOUT = TASKS.filter((t) => t.split === "holdout");
