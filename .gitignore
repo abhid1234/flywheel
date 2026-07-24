@@ -7,3 +7,10 @@ BUILD-LOG.md
 OVERNIGHT.md
 .vercel
 .env*
+
+# launch + blog + writeup material — never commit (published as artifacts, not repo content)
+_writeup/
+_launch/
+*-substack.html
+launch-*.html
+blog-*.html
