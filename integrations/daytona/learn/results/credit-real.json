@@ -1,0 +1,47 @@
+{
+  "experiment": "credit-assignment-real",
+  "backend": "daytona",
+  "continuation": "reference",
+  "steps": 5,
+  "forks": 6,
+  "criticalStep": 2,
+  "located": 2,
+  "checkpoints": [
+    {
+      "checkpoint": 0,
+      "forks": 6,
+      "pass": 6,
+      "passRate": 1
+    },
+    {
+      "checkpoint": 1,
+      "forks": 6,
+      "pass": 6,
+      "passRate": 1
+    },
+    {
+      "checkpoint": 2,
+      "forks": 6,
+      "pass": 6,
+      "passRate": 1
+    },
+    {
+      "checkpoint": 3,
+      "forks": 6,
+      "pass": 0,
+      "passRate": 0
+    },
+    {
+      "checkpoint": 4,
+      "forks": 6,
+      "pass": 0,
+      "passRate": 0
+    },
+    {
+      "checkpoint": 5,
+      "forks": 6,
+      "pass": 0,
+      "passRate": 0
+    }
+  ]
+}
