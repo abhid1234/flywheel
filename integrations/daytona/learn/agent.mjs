@@ -27,6 +27,20 @@ function extractCode(text) {
   return code;
 }
 
+// Detect a rate-limit / quota / transient CLI failure so the caller can RETRY
+// instead of scoring the error text as a wrong answer (which would corrupt an
+// overnight run). Throwing lets rl-loop's runArm back off and retry.
+const RATE_LIMIT = /rate.?limit|quota|too many requests|429|usage limit|overloaded|try again later|temporarily unavailable|please wait|capacity/i;
+// A valid solution must contain a function definition; anything without one that
+// also matches the rate-limit shape is almost certainly not code.
+function guardCode(out) {
+  const code = extractCode(out);
+  if (!/\bdef\s+\w+\s*\(/.test(code) && RATE_LIMIT.test(out)) {
+    throw new Error(`agent rate-limited: ${out.replace(/\s+/g, " ").slice(0, 80)}`);
+  }
+  return code;
+}
+
 async function runCLI(cmd, args, input, timeoutMs) {
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, { stdio: ["pipe", "pipe", "pipe"] });
@@ -59,7 +73,7 @@ export function resolveAgent(kind = "fake", { noise = 0.08 } = {}) {
       async generate(task, lessons) {
         const prompt = buildPrompt(task, lessons.map((l) => l.text));
         const out = await runCLI("codex", ["exec", "--sandbox", "read-only", "--skip-git-repo-check", "-m", "gpt-5.6-sol", prompt], "", 120_000);
-        return extractCode(out);
+        return guardCode(out);
       },
     };
   }
@@ -69,7 +83,7 @@ export function resolveAgent(kind = "fake", { noise = 0.08 } = {}) {
       async generate(task, lessons) {
         const prompt = buildPrompt(task, lessons.map((l) => l.text));
         const out = await runCLI("claude", ["-p", prompt], "", 120_000);
-        return extractCode(out);
+        return guardCode(out);
       },
     };
   }
